@@ -1,0 +1,187 @@
+:root {
+  --color-bg: #f8f1eb;
+  --color-surface: rgba(255, 253, 250, 0.78);
+  --color-text: #2e2927;
+  --color-muted: #8d7d76;
+  --color-gold: #c8a36c;
+  --color-blush: #d9a7a0;
+  --color-rose: #8f4d4d;
+  --color-cocoa: #4b3833;
+  --color-line: rgba(118, 88, 76, 0.16);
+  --shadow-soft: 0 18rpx 56rpx rgba(83, 55, 47, 0.1);
+  --shadow-glow: 0 0 42rpx rgba(201, 148, 127, 0.24);
+}
+
+.page {
+  min-height: 100vh;
+  padding: 24rpx;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+
+.section-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin: 34rpx 0 16rpx;
+  letter-spacing: 0;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1rpx solid var(--color-line);
+  border-radius: 18rpx;
+  padding: 28rpx;
+  box-sizing: border-box;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18rpx);
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+.button {
+  height: 88rpx;
+  border-radius: 24rpx;
+  background: linear-gradient(135deg, #332b28 0%, #513c37 60%, #6c4742 100%);
+  color: #fffdfc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  box-shadow: 0 16rpx 36rpx rgba(61, 42, 37, 0.2);
+  transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+}
+
+.button:active {
+  transform: scale(0.985);
+  box-shadow: 0 10rpx 28rpx rgba(143, 77, 77, 0.22), var(--shadow-glow);
+}
+
+.ghost-button {
+  height: 80rpx;
+  border-radius: 22rpx;
+  border: 1rpx solid var(--color-line);
+  color: var(--color-text);
+  background: rgba(255, 253, 250, 0.58);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10rpx 32rpx rgba(83, 55, 47, 0.07);
+  backdrop-filter: blur(14rpx);
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+.ghost-button:active {
+  transform: translateY(2rpx) scale(0.99);
+  border-color: rgba(200, 163, 108, 0.48);
+}
+
+.input {
+  min-height: 84rpx;
+  border-radius: 22rpx;
+  background: rgba(255, 253, 250, 0.76);
+  border: 1rpx solid var(--color-line);
+  padding: 0 24rpx;
+  box-sizing: border-box;
+  box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.7);
+}
+
+.soft-glow {
+  animation: softGlow 480ms ease-out;
+}
+
+.romance-bg {
+  background:
+    radial-gradient(circle at 14% 12%, rgba(217, 167, 160, 0.36) 0, rgba(217, 167, 160, 0) 34%),
+    radial-gradient(circle at 86% 18%, rgba(200, 163, 108, 0.24) 0, rgba(200, 163, 108, 0) 30%),
+    linear-gradient(160deg, #fff8f2 0%, #f8eee8 46%, #f2e5de 100%);
+}
+
+.ambient-glow {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.ambient-glow::before,
+.ambient-glow::after {
+  content: "";
+  position: absolute;
+  width: 360rpx;
+  height: 360rpx;
+  border-radius: 50%;
+  filter: blur(16rpx);
+  opacity: 0.44;
+  animation: driftGlow 9s ease-in-out infinite;
+}
+
+.ambient-glow::before {
+  left: -120rpx;
+  top: 120rpx;
+  background: rgba(217, 167, 160, 0.38);
+}
+
+.ambient-glow::after {
+  right: -150rpx;
+  bottom: 80rpx;
+  background: rgba(200, 163, 108, 0.26);
+  animation-delay: -3s;
+}
+
+.content-layer {
+  position: relative;
+  z-index: 1;
+}
+
+.glass-card {
+  background: linear-gradient(145deg, rgba(255, 253, 250, 0.82), rgba(255, 246, 240, 0.58));
+  border: 1rpx solid rgba(255, 255, 255, 0.66);
+  box-shadow: var(--shadow-soft), inset 0 1rpx 0 rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(22rpx);
+}
+
+.pulse-soft {
+  animation: pulseSoft 1.8s ease-in-out infinite;
+}
+
+.tap-glow {
+  animation: tapGlow 520ms ease-out;
+}
+
+.romance-kicker {
+  color: var(--color-rose);
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+@keyframes softGlow {
+  0% { box-shadow: 0 0 0 rgba(201, 164, 106, 0); }
+  45% { box-shadow: 0 0 28rpx rgba(201, 164, 106, 0.24); }
+  100% { box-shadow: 0 0 0 rgba(201, 164, 106, 0); }
+}
+
+@keyframes driftGlow {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(26rpx, -18rpx, 0) scale(1.08); }
+}
+
+@keyframes pulseSoft {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 18rpx 56rpx rgba(83, 55, 47, 0.1);
+  }
+  50% {
+    transform: scale(1.012);
+    box-shadow: 0 22rpx 64rpx rgba(143, 77, 77, 0.16), 0 0 34rpx rgba(217, 167, 160, 0.22);
+  }
+}
+
+@keyframes tapGlow {
+  0% { box-shadow: 0 0 0 rgba(217, 167, 160, 0); }
+  45% { box-shadow: 0 0 52rpx rgba(217, 167, 160, 0.34); }
+  100% { box-shadow: 0 0 0 rgba(217, 167, 160, 0); }
+}

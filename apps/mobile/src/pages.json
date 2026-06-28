@@ -1,0 +1,31 @@
+{
+  "pages": [
+    { "path": "pages/home/index", "style": { "navigationBarTitleText": "近处" } },
+    { "path": "pages/auth/index", "style": { "navigationBarTitleText": "登录" } },
+    { "path": "pages/pair/index", "style": { "navigationBarTitleText": "配对" } },
+    { "path": "pages/album/index", "style": { "navigationBarTitleText": "相册" } },
+    { "path": "pages/status/index", "style": { "navigationBarTitleText": "此刻" } },
+    { "path": "pages/interactions/index", "style": { "navigationBarTitleText": "心动小事" } },
+    { "path": "pages/future/index", "style": { "navigationBarTitleText": "未来信" } },
+    { "path": "pages/memories/index", "style": { "navigationBarTitleText": "今日回忆" } },
+    { "path": "pages/notifications/index", "style": { "navigationBarTitleText": "通知" } },
+    { "path": "pages/diary/index", "style": { "navigationBarTitleText": "日记" } },
+    { "path": "pages/anniversary/index", "style": { "navigationBarTitleText": "纪念日" } },
+    { "path": "pages/settings/index", "style": { "navigationBarTitleText": "设置" } },
+    { "path": "pages/privacy/index", "style": { "navigationBarTitleText": "隐私中心" } },
+    { "path": "pages/modules/pet/index", "style": { "navigationBarTitleText": "宠物栏" } }
+  ],
+  "tabBar": {
+    "color": "#8A7F77",
+    "selectedColor": "#2E2A27",
+    "backgroundColor": "#FFFDFC",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/home/index", "text": "首页" },
+      { "pagePath": "pages/album/index", "text": "相册" },
+      { "pagePath": "pages/status/index", "text": "此刻" },
+      { "pagePath": "pages/diary/index", "text": "日记" },
+      { "pagePath": "pages/settings/index", "text": "设置" }
+    ]
+  }
+}

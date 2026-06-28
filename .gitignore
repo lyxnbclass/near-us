@@ -1,0 +1,11 @@
+node_modules/
+dist/
+target/
+.idea/
+.vscode/
+.env
+*.log
+
+apps/mobile/node_modules/
+apps/mobile/dist/
+server/target/

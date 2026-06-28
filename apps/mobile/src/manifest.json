@@ -1,0 +1,16 @@
+{
+  "name": "近处",
+  "appid": "__UNI__OURSPACE",
+  "description": "情侣双人私密空间",
+  "versionName": "0.1.0",
+  "versionCode": "1",
+  "h5": {
+    "title": "近处"
+  },
+  "mp-weixin": {
+    "appid": "",
+    "setting": {
+      "urlCheck": false
+    }
+  }
+}
