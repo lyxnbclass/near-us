@@ -1,4 +1,5 @@
-const BASE_URL = 'http://localhost:8080/api'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
+const USE_DEMO_FALLBACK = import.meta.env.VITE_USE_DEMO_FALLBACK !== 'false'
 const DEMO_STORAGE_KEY = 'ourspace-demo-state'
 const LOVE_START_DATE = '2026-02-23'
 const NEXT_MEETING_DATE = '2026-07-03'
@@ -15,10 +16,19 @@ export function setToken(token: string) {
   uni.setStorageSync('token', token)
 }
 
+export function clearToken() {
+  uni.removeStorageSync('token')
+}
+
+export function resetDemoState() {
+  saveDemoState(defaultDemoState())
+}
+
 export async function request<T>(path: string, options: UniApp.RequestOptions = {}): Promise<T> {
   const token = getToken()
+  let response: UniApp.RequestSuccessCallbackResult
   try {
-    const response = await uni.request({
+    response = await uni.request({
       url: `${BASE_URL}${path}`,
       method: options.method || 'GET',
       data: options.data,
@@ -29,18 +39,22 @@ export async function request<T>(path: string, options: UniApp.RequestOptions = 
         ...(options.header || {})
       }
     })
-    const body = response.data as { success: boolean; data: T; error?: string }
-    if (!body?.success) {
-      throw new Error(body?.error || 'REQUEST_FAILED')
-    }
-    return body.data
   } catch (error) {
+    if (!USE_DEMO_FALLBACK) {
+      throw error
+    }
     const mocked = mockRequest<T>(path, options)
     if (mocked.handled) {
       return mocked.data
     }
     throw error
   }
+
+  const body = response.data as { success: boolean; data: T; error?: string }
+  if (!body?.success) {
+    throw new Error(body?.error || `REQUEST_FAILED_${response.statusCode || 'UNKNOWN'}`)
+  }
+  return body.data
 }
 
 function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResult<T> {

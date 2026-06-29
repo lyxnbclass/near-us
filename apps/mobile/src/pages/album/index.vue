@@ -57,6 +57,8 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { request } from '@/api/client'
+import { ensurePairedSpace } from '@/utils/spaceGuard'
+import { isUserCancel } from '@/utils/uniErrors'
 
 const selectedPhoto = ref('')
 const selectedName = ref('')
@@ -69,19 +71,26 @@ const savedGlow = ref(false)
 onShow(load)
 
 async function load() {
+  if (!(await ensurePairedSpace())) return
   albums.value = await request('/albums')
 }
 
 async function choosePhoto() {
-  const result = await uni.chooseImage({
-    count: 1,
-    sizeType: ['compressed'],
-    sourceType: ['album', 'camera']
-  })
-  const file = result.tempFiles?.[0] as any
-  selectedPhoto.value = result.tempFilePaths?.[0] || file?.path || ''
-  selectedName.value = file?.name || `memory-${Date.now()}.jpg`
-  selectedSize.value = Number(file?.size || 0)
+  try {
+    const result = await uni.chooseImage({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera']
+    })
+    const file = result.tempFiles?.[0] as any
+    selectedPhoto.value = result.tempFilePaths?.[0] || file?.path || ''
+    selectedName.value = file?.name || `memory-${Date.now()}.jpg`
+    selectedSize.value = Number(file?.size || 0)
+  } catch (error: any) {
+    if (!isUserCancel(error)) {
+      uni.showToast({ title: error?.message || '选择照片失败', icon: 'none' })
+    }
+  }
 }
 
 async function create() {
@@ -119,6 +128,8 @@ async function create() {
       savedGlow.value = false
     }, 650)
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: error?.message || '保存回忆失败', icon: 'none' })
   } finally {
     saving.value = false
   }

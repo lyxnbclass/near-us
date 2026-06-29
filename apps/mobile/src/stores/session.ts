@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { request, setToken } from '@/api/client'
+import { clearToken, request, resetDemoState, setToken } from '@/api/client'
 
 export const useSessionStore = defineStore('session', {
   state: () => ({
@@ -23,6 +23,17 @@ export const useSessionStore = defineStore('session', {
       this.paired = data.paired
       this.couple = data.couple || null
       this.members = data.members || []
+    },
+    logout() {
+      clearToken()
+      this.userId = 0
+      this.paired = false
+      this.couple = null
+      this.members = []
+    },
+    resetDemo() {
+      resetDemoState()
+      this.logout()
     }
   }
 })

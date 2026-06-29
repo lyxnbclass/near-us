@@ -64,6 +64,8 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { request } from '@/api/client'
+import { ensurePairedSpace } from '@/utils/spaceGuard'
+import { isUserCancel } from '@/utils/uniErrors'
 
 const tags = ['在想你', '想被抱一下', '在加班', '刚吃饭', '睡前想你']
 const reactions = ['抱抱', '收到啦', '想你']
@@ -81,19 +83,26 @@ const canPublish = computed(() => content.value.trim() || selectedPhoto.value)
 onShow(load)
 
 async function load() {
+  if (!(await ensurePairedSpace())) return
   statuses.value = await request('/statuses')
 }
 
 async function choosePhoto() {
-  const result = await uni.chooseImage({
-    count: 1,
-    sizeType: ['compressed'],
-    sourceType: ['album', 'camera']
-  })
-  const file = result.tempFiles?.[0] as any
-  selectedPhoto.value = result.tempFilePaths?.[0] || file?.path || ''
-  selectedName.value = file?.name || `status-${Date.now()}.jpg`
-  selectedSize.value = Number(file?.size || 0)
+  try {
+    const result = await uni.chooseImage({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera']
+    })
+    const file = result.tempFiles?.[0] as any
+    selectedPhoto.value = result.tempFilePaths?.[0] || file?.path || ''
+    selectedName.value = file?.name || `status-${Date.now()}.jpg`
+    selectedSize.value = Number(file?.size || 0)
+  } catch (error: any) {
+    if (!isUserCancel(error)) {
+      uni.showToast({ title: error?.message || '选择照片失败', icon: 'none' })
+    }
+  }
 }
 
 function clearPhoto() {
@@ -112,12 +121,16 @@ function statusImage(item: any) {
 }
 
 async function react(item: any, reactionKey: string) {
-  await request(`/statuses/${item.id}/reactions`, {
-    method: 'POST',
-    data: { reactionKey }
-  })
-  uni.showToast({ title: `已回应：${reactionKey}`, icon: 'none' })
-  await load()
+  try {
+    await request(`/statuses/${item.id}/reactions`, {
+      method: 'POST',
+      data: { reactionKey }
+    })
+    uni.showToast({ title: `已回应：${reactionKey}`, icon: 'none' })
+    await load()
+  } catch (error: any) {
+    uni.showToast({ title: error?.message || '回应失败', icon: 'none' })
+  }
 }
 
 async function publish() {
@@ -157,6 +170,8 @@ async function publish() {
       publishedGlow.value = false
     }, 560)
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: error?.message || '发布失败', icon: 'none' })
   } finally {
     publishing.value = false
   }

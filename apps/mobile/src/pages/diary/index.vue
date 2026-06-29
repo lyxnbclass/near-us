@@ -96,6 +96,7 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { request } from '@/api/client'
+import { ensurePairedSpace } from '@/utils/spaceGuard'
 
 const title = ref('')
 const content = ref('')
@@ -114,6 +115,7 @@ const canSave = computed(() => title.value.trim() && content.value.trim())
 onShow(load)
 
 async function load() {
+  if (!(await ensurePairedSpace())) return
   diaries.value = await request('/diaries')
 }
 
@@ -141,16 +143,22 @@ async function create() {
       savedGlow.value = false
     }, 650)
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: error?.message || '保存日记失败', icon: 'none' })
   } finally {
     saving.value = false
   }
 }
 
 async function open(id: number) {
-  currentDiary.value = await request<any>(`/diaries/${id}`)
-  comments.value = currentDiary.value?.comments || []
-  if (currentDiary.value?.visibility === 'shared' && !comments.value.length) {
-    comments.value = await request<any[]>(`/diaries/${id}/comments`)
+  try {
+    currentDiary.value = await request<any>(`/diaries/${id}`)
+    comments.value = currentDiary.value?.comments || []
+    if (currentDiary.value?.visibility === 'shared' && !comments.value.length) {
+      comments.value = await request<any[]>(`/diaries/${id}/comments`)
+    }
+  } catch (error: any) {
+    uni.showToast({ title: error?.message || '打开日记失败', icon: 'none' })
   }
 }
 
@@ -177,6 +185,8 @@ async function sendComment() {
     setTimeout(() => {
       commentGlow.value = false
     }, 650)
+  } catch (error: any) {
+    uni.showToast({ title: error?.message || '发送留言失败', icon: 'none' })
   } finally {
     commenting.value = false
   }

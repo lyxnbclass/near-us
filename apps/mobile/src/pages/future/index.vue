@@ -12,7 +12,9 @@
         <input class="input" v-model="title" placeholder="信的标题" />
         <textarea v-model="content" placeholder="写一封只在未来打开的信" />
         <input class="input" v-model="openAt" placeholder="开启时间：2026-08-20 20:00" />
-        <view class="button" @click="createLetter">封存这封信</view>
+        <view class="button" :class="{ disabled: !canCreate || saving }" @click="createLetter">
+          {{ saving ? '封存中' : '封存这封信' }}
+        </view>
       </view>
 
       <view class="section-title">时间里的信</view>
@@ -31,45 +33,57 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { request } from '@/api/client'
+import { ensurePairedSpace } from '@/utils/spaceGuard'
 
 const title = ref('')
 const content = ref('')
 const openAt = ref('')
 const letters = ref<any[]>([])
 const glow = ref(false)
+const saving = ref(false)
+
+const canCreate = computed(() => title.value.trim() && content.value.trim() && openAt.value.trim())
 
 onShow(load)
 
 async function load() {
+  if (!(await ensurePairedSpace())) return
   letters.value = await request('/future-letters')
 }
 
 async function createLetter() {
-  if (!title.value.trim() || !content.value.trim() || !openAt.value.trim()) {
+  if (!canCreate.value || saving.value) {
     uni.showToast({ title: '标题、内容和时间都要写', icon: 'none' })
     return
   }
-  await request('/future-letters', {
-    method: 'POST',
-    data: {
-      title: title.value,
-      content: content.value,
-      openAt: toIso(openAt.value),
-      recipientMode: 'partner'
-    }
-  })
-  title.value = ''
-  content.value = ''
-  openAt.value = ''
-  glow.value = true
-  uni.showToast({ title: '信已经封存', icon: 'none' })
-  setTimeout(() => {
-    glow.value = false
-  }, 560)
-  await load()
+  saving.value = true
+  try {
+    await request('/future-letters', {
+      method: 'POST',
+      data: {
+        title: title.value,
+        content: content.value,
+        openAt: toIso(openAt.value),
+        recipientMode: 'partner'
+      }
+    })
+    title.value = ''
+    content.value = ''
+    openAt.value = ''
+    glow.value = true
+    uni.showToast({ title: '信已经封存', icon: 'none' })
+    setTimeout(() => {
+      glow.value = false
+    }, 560)
+    await load()
+  } catch (error: any) {
+    uni.showToast({ title: error?.message || '封存未来信失败', icon: 'none' })
+  } finally {
+    saving.value = false
+  }
 }
 
 async function openLetter(letter: any) {
@@ -116,6 +130,10 @@ textarea {
   width: 100%;
   min-height: 220rpx;
   line-height: 1.6;
+}
+
+.button.disabled {
+  opacity: 0.48;
 }
 
 .letter-card {

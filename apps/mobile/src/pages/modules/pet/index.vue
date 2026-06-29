@@ -37,7 +37,7 @@
           <view class="avatar">{{ pet.name?.slice(0, 1) || '宠' }}</view>
           <view class="pet-main">
             <text class="pet-name">{{ pet.name }}</text>
-            <text class="muted">{{ pet.breed || '共同照顾的小成员' }}</text>
+            <text class="muted">{{ petMeta(pet) }}</text>
           </view>
           <text class="select-mark">{{ selectedPetId === pet.id ? '记录中' : '选择' }}</text>
         </view>
@@ -103,6 +103,8 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { request } from '@/api/client'
+import { ensurePairedSpace } from '@/utils/spaceGuard'
+import { isUserCancel } from '@/utils/uniErrors'
 
 const pets = ref<any[]>([])
 const events = ref<any[]>([])
@@ -120,6 +122,7 @@ const savingProfile = ref(false)
 const savingEvent = ref(false)
 const profileGlow = ref(false)
 const eventGlow = ref(false)
+const moduleDisabledPrompting = ref(false)
 
 const eventTypes = ['喂食', '散步', '洗澡', '撒娇', '日常']
 const selectedPetName = computed(() => pets.value.find(item => item.id === selectedPetId.value)?.name || '')
@@ -128,10 +131,16 @@ const canSaveEvent = computed(() => selectedPetId.value && eventType.value && ev
 onShow(load)
 
 async function load() {
-  pets.value = await request('/modules/pet/profiles')
-  events.value = await request('/modules/pet/events')
-  if (!selectedPetId.value && pets.value.length) {
-    selectedPetId.value = pets.value[0].id
+  if (!(await ensurePairedSpace())) return
+  try {
+    pets.value = await request('/modules/pet/profiles')
+    events.value = await request('/modules/pet/events')
+    if (!selectedPetId.value && pets.value.length) {
+      selectedPetId.value = pets.value[0].id
+    }
+  } catch (error: any) {
+    if (handleModuleDisabled(error)) return
+    throw error
   }
 }
 
@@ -144,15 +153,21 @@ function pickBirthday(event: any) {
 }
 
 async function choosePhoto() {
-  const result = await uni.chooseImage({
-    count: 1,
-    sizeType: ['compressed'],
-    sourceType: ['album', 'camera']
-  })
-  const file = result.tempFiles?.[0] as any
-  selectedPhoto.value = result.tempFilePaths?.[0] || file?.path || ''
-  selectedName.value = file?.name || `pet-event-${Date.now()}.jpg`
-  selectedSize.value = Number(file?.size || 0)
+  try {
+    const result = await uni.chooseImage({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera']
+    })
+    const file = result.tempFiles?.[0] as any
+    selectedPhoto.value = result.tempFilePaths?.[0] || file?.path || ''
+    selectedName.value = file?.name || `pet-event-${Date.now()}.jpg`
+    selectedSize.value = Number(file?.size || 0)
+  } catch (error: any) {
+    if (!isUserCancel(error)) {
+      uni.showToast({ title: error?.message || '选择照片失败', icon: 'none' })
+    }
+  }
 }
 
 function clearPhoto() {
@@ -186,6 +201,9 @@ async function createProfile() {
       profileGlow.value = false
     }, 650)
     await load()
+  } catch (error: any) {
+    if (handleModuleDisabled(error)) return
+    throw error
   } finally {
     savingProfile.value = false
   }
@@ -231,13 +249,40 @@ async function createEvent() {
       eventGlow.value = false
     }, 650)
     await load()
+  } catch (error: any) {
+    if (handleModuleDisabled(error)) return
+    throw error
   } finally {
     savingEvent.value = false
   }
 }
 
+function handleModuleDisabled(error: any) {
+  if (error?.message !== 'MODULE_DISABLED') return false
+  if (moduleDisabledPrompting.value) return true
+  moduleDisabledPrompting.value = true
+  uni.showModal({
+    title: '宠物栏未开启',
+    content: '先在设置里开启宠物栏，再记录芋圆和它的小日常。',
+    confirmText: '去设置',
+    showCancel: false,
+    success: () => {
+      uni.switchTab({ url: '/pages/settings/index' })
+    },
+    complete: () => {
+      moduleDisabledPrompting.value = false
+    }
+  })
+  return true
+}
+
 function eventImage(event: any) {
   return event.local_url || event.localUrl || event.object_key || ''
+}
+
+function petMeta(pet: any) {
+  const parts = [pet.breed, pet.birthday ? `生日 ${pet.birthday}` : ''].filter(Boolean)
+  return parts.length ? parts.join(' · ') : '共同照顾的小成员'
 }
 
 function inferMimeType(name: string) {

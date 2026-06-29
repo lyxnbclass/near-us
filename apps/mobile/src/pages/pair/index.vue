@@ -11,7 +11,9 @@
       <view class="card glass-card block" :class="{ 'tap-glow': inviteGlow }">
         <text class="title">把这串密语交给 TA</text>
         <text class="muted">邀请码 24 小时有效，绑定后这里就只对你们两个人可见。</text>
-        <view class="button" @click="createInvite">点亮我们的空间</view>
+        <view class="button" :class="{ disabled: creatingInvite }" @click="createInvite">
+          {{ creatingInvite ? '点亮中' : '点亮我们的空间' }}
+        </view>
         <view v-if="inviteCode" class="secret-card pulse-soft">
           <text class="secret-label">OUR SECRET</text>
           <text class="code">{{ inviteCode }}</text>
@@ -22,7 +24,9 @@
       <view class="card glass-card block">
         <text class="title">我收到了密语</text>
         <input class="input" v-model="code" placeholder="输入对方的邀请码" />
-        <view class="button" @click="bind">完成配对</view>
+        <view class="button" :class="{ disabled: !code.trim() || binding }" @click="bind">
+          {{ binding ? '配对中' : '完成配对' }}
+        </view>
       </view>
     </view>
   </view>
@@ -35,8 +39,12 @@ import { request } from '@/api/client'
 const inviteCode = ref('')
 const code = ref('')
 const inviteGlow = ref(false)
+const creatingInvite = ref(false)
+const binding = ref(false)
 
 async function createInvite() {
+  if (creatingInvite.value) return
+  creatingInvite.value = true
   try {
     const data = await request<{ inviteCode: string }>('/couples/invite', { method: 'POST' })
     inviteCode.value = data.inviteCode
@@ -48,16 +56,26 @@ async function createInvite() {
     }, 560)
   } catch (error: any) {
     uni.showToast({ title: error?.message || '生成失败', icon: 'none' })
+  } finally {
+    creatingInvite.value = false
   }
 }
 
 async function bind() {
+  if (binding.value) return
+  if (!code.value.trim()) {
+    uni.showToast({ title: '先输入邀请码', icon: 'none' })
+    return
+  }
+  binding.value = true
   try {
-    await request('/couples/bind', { method: 'POST', data: { inviteCode: code.value } })
+    await request('/couples/bind', { method: 'POST', data: { inviteCode: code.value.trim() } })
     uni.showToast({ title: '空间已为你们点亮', icon: 'none' })
     uni.switchTab({ url: '/pages/home/index' })
   } catch (error: any) {
     uni.showToast({ title: error?.message || '配对失败', icon: 'none' })
+  } finally {
+    binding.value = false
   }
 }
 </script>
@@ -115,5 +133,9 @@ async function bind() {
   letter-spacing: 6rpx;
   font-weight: 600;
   color: var(--color-cocoa);
+}
+
+.button.disabled {
+  opacity: 0.52;
 }
 </style>
