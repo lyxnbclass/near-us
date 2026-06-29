@@ -9,14 +9,14 @@
       </view>
 
       <view class="stack">
-        <view v-for="item in notifications" :key="item.id" class="card glass-card notice" :class="{ unread: !item.read_at }" @click="markRead(item)">
+        <view v-for="item in notifications" :key="item.id" class="card glass-card notice" :class="{ unread: !item.read_at, pending: readingId === item.id }" @click="markRead(item)">
           <view class="notice-dot" />
           <view class="notice-main">
             <text class="notice-title">{{ item.title }}</text>
             <text class="muted">{{ item.body || typeText(item.type) }}</text>
             <text class="tiny">{{ formatTime(item.created_at) }}</text>
           </view>
-          <text class="status-pill">{{ item.read_at ? '已读' : '未读' }}</text>
+          <text class="status-pill">{{ readingId === item.id ? '处理中' : item.read_at ? '已读' : '未读' }}</text>
         </view>
 
         <view v-if="!notifications.length" class="card glass-card empty">
@@ -31,20 +31,34 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { request } from '@/api/client'
+import { ensurePairedSpace } from '@/utils/spaceGuard'
 
 const notifications = ref<any[]>([])
+const readingId = ref<number | null>(null)
 
 onShow(load)
 
 async function load() {
-  notifications.value = await request('/notifications')
+  if (!(await ensurePairedSpace())) return
+  try {
+    notifications.value = await request('/notifications')
+  } catch (error: any) {
+    uni.showToast({ title: error?.message || '加载通知失败', icon: 'none' })
+  }
 }
 
 async function markRead(item: any) {
-  if (item.read_at) return
-  await request(`/notifications/${item.id}/read`, { method: 'POST' })
-  uni.showToast({ title: '已标记为已读', icon: 'none' })
-  await load()
+  if (item.read_at || readingId.value) return
+  readingId.value = item.id
+  try {
+    await request(`/notifications/${item.id}/read`, { method: 'POST' })
+    uni.showToast({ title: '已标记为已读', icon: 'none' })
+    await load()
+  } catch (error: any) {
+    uni.showToast({ title: error?.message || '标记已读失败', icon: 'none' })
+  } finally {
+    readingId.value = null
+  }
 }
 
 function typeText(type: string) {
@@ -87,6 +101,10 @@ function formatTime(value: string) {
 
 .notice.unread {
   box-shadow: var(--shadow-soft), 0 0 36rpx rgba(217, 167, 160, 0.22);
+}
+
+.notice.pending {
+  opacity: 0.72;
 }
 
 .notice-dot {

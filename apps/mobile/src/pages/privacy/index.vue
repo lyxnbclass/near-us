@@ -11,12 +11,27 @@
       <view class="card glass-card block">
         <text class="block-title">导出我的数据</text>
         <text class="muted">生成一份包含账号、配对、相册元数据、互动记录和隐私请求的 JSON 摘要。</text>
-        <view class="button" @click="exportData">生成导出预览</view>
+        <view class="button" :class="{ disabled: exporting }" @click="exportData">
+          {{ exporting ? '生成中' : '生成导出预览' }}
+        </view>
       </view>
 
       <view v-if="exportPreview" class="card glass-card export-box">
         <text class="block-title">导出摘要</text>
         <text class="muted">导出时间：{{ exportPreview.exportedAt }}</text>
+        <view class="export-section">
+          <text class="export-label">配对信息</text>
+          <text class="muted">在一起日期：{{ exportPreview.couple?.anniversary_start_date || exportPreview.couple?.paired_at || '-' }}</text>
+        </view>
+        <view class="export-section">
+          <text class="export-label">纪念日</text>
+          <view class="export-list">
+            <view v-for="item in exportPreview.anniversaries || []" :key="item.id" class="export-line">
+              <text>{{ item.title }}</text>
+              <text class="muted">{{ item.event_date }}</text>
+            </view>
+          </view>
+        </view>
         <view class="metric-grid">
           <view class="metric">
             <text class="metric-num">{{ exportPreview.affectionCards?.length || 0 }}</text>
@@ -37,7 +52,9 @@
       <view class="card glass-card block danger">
         <text class="block-title">注销账号并删除数据</text>
         <text class="muted">提交后进入 7 天冷静期。正式环境应在冷静期后清理数据库记录和对象存储文件。</text>
-        <view class="danger-button" @click="requestDeletion">申请注销</view>
+        <view class="danger-button" :class="{ disabled: deleting }" @click="requestDeletion">
+          {{ deleting ? '提交中' : '申请注销' }}
+        </view>
       </view>
 
       <view class="section-title">请求记录</view>
@@ -64,23 +81,37 @@ import { request } from '@/api/client'
 
 const exportPreview = ref<any>(null)
 const requests = ref<any[]>([])
+const exporting = ref(false)
+const deleting = ref(false)
 
 onShow(loadRequests)
 
 async function exportData() {
-  exportPreview.value = await request('/privacy/export')
-  uni.showToast({ title: '导出预览已生成', icon: 'none' })
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    exportPreview.value = await request('/privacy/export')
+    uni.showToast({ title: '导出预览已生成', icon: 'none' })
+  } finally {
+    exporting.value = false
+  }
 }
 
 async function requestDeletion() {
+  if (deleting.value) return
   uni.showModal({
     title: '确认申请注销？',
     content: '提交后会进入 7 天冷静期。',
     success: async (res) => {
       if (!res.confirm) return
-      await request('/privacy/deletion-request', { method: 'POST' })
-      uni.showToast({ title: '已提交注销申请', icon: 'none' })
-      await loadRequests()
+      deleting.value = true
+      try {
+        await request('/privacy/deletion-request', { method: 'POST' })
+        uni.showToast({ title: '已提交注销申请', icon: 'none' })
+        await loadRequests()
+      } finally {
+        deleting.value = false
+      }
     }
   })
 }
@@ -140,6 +171,35 @@ function formatTime(value: string) {
   font-weight: 600;
 }
 
+.export-section {
+  display: grid;
+  gap: 10rpx;
+  padding: 16rpx 0 4rpx;
+}
+
+.export-label {
+  color: var(--color-text);
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.export-list {
+  display: grid;
+  gap: 10rpx;
+}
+
+.export-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 16rpx;
+  background: rgba(255, 253, 250, 0.52);
+  color: var(--color-text);
+  font-size: 25rpx;
+}
+
 .danger {
   border-color: rgba(159, 75, 67, 0.28);
 }
@@ -153,6 +213,11 @@ function formatTime(value: string) {
   align-items: center;
   justify-content: center;
   font-weight: 600;
+}
+
+.button.disabled,
+.danger-button.disabled {
+  opacity: 0.5;
 }
 
 .request-row {
