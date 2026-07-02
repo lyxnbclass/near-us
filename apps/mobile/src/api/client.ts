@@ -1,5 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
-const USE_DEMO_FALLBACK = import.meta.env.VITE_USE_DEMO_FALLBACK !== 'false'
+const BASE_URL = 'http://localhost:8080/api'
 const DEMO_STORAGE_KEY = 'ourspace-demo-state'
 const LOVE_START_DATE = '2026-02-23'
 const NEXT_MEETING_DATE = '2026-07-03'
@@ -21,14 +20,13 @@ export function clearToken() {
 }
 
 export function resetDemoState() {
-  saveDemoState(defaultDemoState())
+  uni.removeStorageSync(DEMO_STORAGE_KEY)
 }
 
 export async function request<T>(path: string, options: UniApp.RequestOptions = {}): Promise<T> {
   const token = getToken()
-  let response: UniApp.RequestSuccessCallbackResult
   try {
-    response = await uni.request({
+    const response = await uni.request({
       url: `${BASE_URL}${path}`,
       method: options.method || 'GET',
       data: options.data,
@@ -39,22 +37,18 @@ export async function request<T>(path: string, options: UniApp.RequestOptions = 
         ...(options.header || {})
       }
     })
-  } catch (error) {
-    if (!USE_DEMO_FALLBACK) {
-      throw error
+    const body = response.data as { success: boolean; data: T; error?: string }
+    if (!body?.success) {
+      throw new Error(body?.error || 'REQUEST_FAILED')
     }
+    return body.data
+  } catch (error) {
     const mocked = mockRequest<T>(path, options)
     if (mocked.handled) {
       return mocked.data
     }
     throw error
   }
-
-  const body = response.data as { success: boolean; data: T; error?: string }
-  if (!body?.success) {
-    throw new Error(body?.error || `REQUEST_FAILED_${response.statusCode || 'UNKNOWN'}`)
-  }
-  return body.data
 }
 
 function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResult<T> {
@@ -97,24 +91,60 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
       throw new Error('PAIR_REQUIRED')
     }
     const anniversaries = state.anniversaries || defaultDemoState().anniversaries
-    return handled({
-      togetherDays: daysSince(LOVE_START_DATE),
-      partnerStatus: { content: '刚刚在想今晚一起吃什么', nickname: '对方', mood_tag: '在想你' },
-      anniversaries: anniversaries.slice(0, 3).map((item: any) => ({
+    const notifications = state.notifications || defaultDemoState().notifications
+    const statuses = state.statuses || defaultDemoState().statuses
+    const wishes = state.wishes || defaultDemoState().wishes
+    const albums = state.albums || defaultDemoState().albums
+    const futureLetters = state.futureLetters || defaultDemoState().futureLetters
+    const dailyTopic = state.dailyTopic || defaultDemoState().dailyTopic
+    const nextAnniversaries = anniversaries
+      .map((item: any) => ({
         ...item,
         days_left: daysLeft(item.event_date)
-      })),
-      enabledModules: state.petEnabled ? [{ module_key: 'pet' }] : []
+      }))
+      .sort((a: any, b: any) => (a.days_left ?? 9999) - (b.days_left ?? 9999))
+    const unlockedLetters = futureLetters.filter((item: any) => new Date(item.open_at).getTime() <= Date.now())
+    const completedWishes = wishes.filter((item: any) => item.completed).length
+    return handled({
+      togetherDays: daysSince(LOVE_START_DATE),
+      partnerStatus: statuses.find((item: any) => item.nickname === '对方') || statuses[0] || null,
+      anniversaries: nextAnniversaries.slice(0, 3),
+      enabledModules: state.petEnabled ? [{ module_key: 'pet' }] : [],
+      unreadCount: notifications.filter((item: any) => !item.read_at).length,
+      latestStatus: statuses[0] || null,
+      latestAlbum: albums[0] || null,
+      wishProgress: {
+        total: wishes.length,
+        completed: completedWishes,
+        next: wishes.find((item: any) => !item.completed) || wishes[0] || null
+      },
+      dailyTopic: {
+        question: dailyTopic?.topic?.question || '今晚想和对方聊点什么？',
+        unlocked: Boolean(dailyTopic?.unlocked),
+        answeredByMe: Boolean(dailyTopic?.answeredByMe)
+      },
+      futureLetterCount: futureLetters.length,
+      unlockedFutureLetterCount: unlockedLetters.length
     })
   }
 
   if (path === '/couples/invite' && method === 'POST') {
     state.inviteCode = 'NEAR2026'
+    state.inviteExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString()
     saveDemoState(state)
-    return handled({ inviteCode: state.inviteCode, coupleId: 1 })
+    return handled({ inviteCode: state.inviteCode, expiresAt: state.inviteExpiresAt, coupleId: 1 })
   }
 
   if (path === '/couples/bind' && method === 'POST') {
+    const body = options.data as any
+    const submittedCode = String(body?.inviteCode || '').trim().toUpperCase()
+    const expectedCode = state.inviteCode || 'NEAR2026'
+    if (!submittedCode || submittedCode !== expectedCode) {
+      throw new Error('INVITE_NOT_FOUND')
+    }
+    if (state.inviteExpiresAt && new Date(state.inviteExpiresAt).getTime() <= Date.now()) {
+      throw new Error('INVITE_EXPIRED')
+    }
     state.paired = true
     state.pairedAt = LOVE_START_DATE
     state.coupleStatus = 'active'
@@ -184,6 +214,41 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
     return handled({ id: profile.id })
   }
 
+  if (path.startsWith('/modules/pet/profiles/') && method === 'PUT') {
+    if (!state.petEnabled) throw new Error('MODULE_DISABLED')
+    const id = Number(path.split('/')[4])
+    const body = options.data as any
+    let updated = false
+    state.petProfiles = (state.petProfiles || []).map((item: any) => {
+      if (item.id !== id) return item
+      updated = true
+      return {
+        ...item,
+        name: body?.name || item.name,
+        breed: body?.breed ?? item.breed,
+        birthday: body?.birthday ?? item.birthday,
+        updated_at: new Date().toISOString()
+      }
+    })
+    state.petEvents = (state.petEvents || []).map((item: any) => item.pet_id === id
+      ? { ...item, pet_name: body?.name || item.pet_name }
+      : item)
+    if (!updated) throw new Error('PET_NOT_FOUND')
+    saveDemoState(state)
+    return handled({ id })
+  }
+
+  if (path.startsWith('/modules/pet/profiles/') && method === 'DELETE') {
+    if (!state.petEnabled) throw new Error('MODULE_DISABLED')
+    const id = Number(path.split('/')[4])
+    const before = (state.petProfiles || []).length
+    state.petProfiles = (state.petProfiles || []).filter((item: any) => item.id !== id)
+    if (state.petProfiles.length === before) throw new Error('PET_NOT_FOUND')
+    state.petEvents = (state.petEvents || []).filter((item: any) => item.pet_id !== id)
+    saveDemoState(state)
+    return handled({ id, deleted: true })
+  }
+
   if (path === '/modules/pet/events' && method === 'GET') {
     if (!state.petEnabled) throw new Error('MODULE_DISABLED')
     const petId = queryNumber(path, 'petId')
@@ -215,6 +280,16 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
     state.petEvents.unshift(event)
     saveDemoState(state)
     return handled({ id: event.id })
+  }
+
+  if (path.startsWith('/modules/pet/events/') && method === 'DELETE') {
+    if (!state.petEnabled) throw new Error('MODULE_DISABLED')
+    const id = Number(path.split('/')[4])
+    const before = (state.petEvents || []).length
+    state.petEvents = (state.petEvents || []).filter((item: any) => item.id !== id)
+    if (state.petEvents.length === before) throw new Error('PET_EVENT_NOT_FOUND')
+    saveDemoState(state)
+    return handled({ id, deleted: true })
   }
 
   if (path === '/files' && method === 'POST') {
@@ -267,6 +342,33 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
     return handled({ id: album.id })
   }
 
+  if (path.startsWith('/albums/') && method === 'PUT') {
+    const id = Number(path.split('/')[2])
+    const body = options.data as any
+    let updated = false
+    state.albums = (state.albums || []).map((item: any) => {
+      if (item.id !== id) return item
+      updated = true
+      return {
+        ...item,
+        caption: body?.caption ?? item.caption,
+        updated_at: new Date().toISOString()
+      }
+    })
+    if (!updated) throw new Error('ALBUM_NOT_FOUND')
+    saveDemoState(state)
+    return handled({ id })
+  }
+
+  if (path.startsWith('/albums/') && method === 'DELETE') {
+    const id = Number(path.split('/')[2])
+    const before = (state.albums || []).length
+    state.albums = (state.albums || []).filter((item: any) => item.id !== id)
+    if (state.albums.length === before) throw new Error('ALBUM_NOT_FOUND')
+    saveDemoState(state)
+    return handled({ id, deleted: true })
+  }
+
   if (path === '/diaries' && method === 'GET') {
     state.diaries = state.diaries || []
     return handled(state.diaries.map((item: any) => ({
@@ -295,6 +397,35 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
     state.diaries.unshift(diary)
     saveDemoState(state)
     return handled({ id: diary.id })
+  }
+
+  if (path.startsWith('/diaries/') && method === 'PUT') {
+    const id = Number(path.split('/')[2])
+    const body = options.data as any
+    let updated = false
+    state.diaries = (state.diaries || []).map((item: any) => {
+      if (item.id !== id) return item
+      updated = true
+      return {
+        ...item,
+        title: body?.title || item.title,
+        content: body?.content || item.content,
+        visibility: body?.visibility || item.visibility,
+        updated_at: new Date().toISOString()
+      }
+    })
+    if (!updated) throw new Error('DIARY_NOT_FOUND')
+    saveDemoState(state)
+    return handled({ id })
+  }
+
+  if (path.startsWith('/diaries/') && method === 'DELETE') {
+    const id = Number(path.split('/')[2])
+    const before = (state.diaries || []).length
+    state.diaries = (state.diaries || []).filter((item: any) => item.id !== id)
+    if (state.diaries.length === before) throw new Error('DIARY_NOT_FOUND')
+    saveDemoState(state)
+    return handled({ id, deleted: true })
   }
 
   if (path.startsWith('/diaries/') && path.endsWith('/comments') && method === 'GET') {
@@ -424,6 +555,43 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
     return handled({ id, completed: true })
   }
 
+  if (path.startsWith('/interactions/wishes/') && path.endsWith('/reopen') && method === 'POST') {
+    const id = Number(path.split('/')[3])
+    state.wishes = (state.wishes || []).map((item: any) => item.id === id
+      ? { ...item, completed: false, completed_at: null, completed_by: null, updated_at: new Date().toISOString() }
+      : item)
+    saveDemoState(state)
+    return handled({ id, completed: false })
+  }
+
+  if (path.startsWith('/interactions/wishes/') && method === 'PUT') {
+    const id = Number(path.split('/')[3])
+    const body = options.data as any
+    let updated = false
+    state.wishes = (state.wishes || []).map((item: any) => {
+      if (item.id !== id) return item
+      updated = true
+      return {
+        ...item,
+        title: body?.title || item.title,
+        note: body?.note ?? item.note,
+        updated_at: new Date().toISOString()
+      }
+    })
+    if (!updated) throw new Error('WISH_NOT_FOUND')
+    saveDemoState(state)
+    return handled({ id })
+  }
+
+  if (path.startsWith('/interactions/wishes/') && method === 'DELETE') {
+    const id = Number(path.split('/')[3])
+    const before = (state.wishes || []).length
+    state.wishes = (state.wishes || []).filter((item: any) => item.id !== id)
+    if (state.wishes.length === before) throw new Error('WISH_NOT_FOUND')
+    saveDemoState(state)
+    return handled({ id, deleted: true })
+  }
+
   if (path === '/interactions/daily-topic' && method === 'GET') {
     state.dailyTopic = state.dailyTopic || {
       topic: {
@@ -471,6 +639,7 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
       title: item.title,
       open_at: item.open_at,
       created_at: item.created_at,
+      recipient_user_id: item.recipient_user_id ?? 2,
       sender_name: item.sender_name || state.user?.nickname || '我',
       unlocked: new Date(item.open_at).getTime() <= Date.now()
     })))
@@ -484,6 +653,7 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
       title: body?.title || '写给未来的你',
       content: body?.content || '',
       open_at: body?.openAt || new Date().toISOString(),
+      recipient_user_id: body?.recipientMode === 'both' ? null : 2,
       created_at: new Date().toISOString(),
       sender_name: state.user?.nickname || '我'
     })
@@ -508,6 +678,9 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
           caption: '一年前的今天，我们说下次要一起看海。',
           creator_name: '对方',
           mime_type: 'image/jpeg',
+          object_key: '',
+          local_url: '',
+          years_ago: 1,
           created_at: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString()
         },
         {
@@ -515,6 +688,9 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
           caption: '那天回家的路很慢，风也很温柔。',
           creator_name: state.user?.nickname || '我',
           mime_type: 'image/jpeg',
+          object_key: '',
+          local_url: '',
+          years_ago: 2,
           created_at: new Date(Date.now() - 730 * 24 * 60 * 60 * 1000).toISOString()
         }
       ],
@@ -523,6 +699,7 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
           id: 1,
           title: '那天没有说出口的话',
           visibility: 'shared',
+          years_ago: 1,
           created_at: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString()
         }
       ]
@@ -567,6 +744,25 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
     state.privacyRequests.unshift(deletionRequest)
     saveDemoState(state)
     return handled({ status: 'pending', scheduledDeleteAt: deletionRequest.scheduled_delete_at })
+  }
+
+  if (path === '/privacy/deletion-request/cancel' && method === 'POST') {
+    let cancelled = 0
+    state.privacyRequests = (state.privacyRequests || []).map((item: any) => {
+      if (item.request_type !== 'account_deletion' || item.status !== 'pending') return item
+      cancelled += 1
+      return {
+        ...item,
+        status: 'cancelled',
+        completed_at: new Date().toISOString(),
+        note: '演示模式：已在冷静期内撤销注销申请'
+      }
+    })
+    if (state.user) {
+      state.user.status = 'active'
+    }
+    saveDemoState(state)
+    return handled({ cancelled })
   }
 
   if (path === '/privacy/requests' && method === 'GET') {
@@ -615,19 +811,35 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
     const body = options.data as any
     const reactionKey = body?.reactionKey || '抱抱'
     state.statuses = (state.statuses || []).map((item: any) => item.id === id
-      ? { ...item, reactions: item.reactions ? `${item.reactions},${reactionKey}` : reactionKey }
+      ? {
+          ...item,
+          reactions: reactionList(item.reactions).includes(reactionKey)
+            ? item.reactions
+            : item.reactions ? `${item.reactions},${reactionKey}` : reactionKey
+        }
       : item)
     state.notifications = state.notifications || []
-    state.notifications.unshift({
-      id: Date.now(),
-      type: 'status.reacted',
-      title: 'TA 回应了你的此刻',
-      body: reactionKey,
-      read_at: null,
-      created_at: new Date().toISOString()
-    })
+    if (!(state.notifications || []).some((item: any) => item.type === 'status.reacted' && item.body === reactionKey && !item.read_at)) {
+      state.notifications.unshift({
+        id: Date.now(),
+        type: 'status.reacted',
+        title: 'TA 回应了你的此刻',
+        body: reactionKey,
+        read_at: null,
+        created_at: new Date().toISOString()
+      })
+    }
     saveDemoState(state)
     return handled({ id, reactionKey })
+  }
+
+  if (path.startsWith('/statuses/') && method === 'DELETE') {
+    const id = Number(path.split('/')[2])
+    const before = (state.statuses || []).length
+    state.statuses = (state.statuses || []).filter((item: any) => item.id !== id)
+    if (state.statuses.length === before) throw new Error('STATUS_NOT_FOUND')
+    saveDemoState(state)
+    return handled({ id, deleted: true })
   }
 
   if (path === '/notifications' && method === 'GET') {
@@ -636,6 +848,18 @@ function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResul
       { id: 2, type: 'affection.created', title: '收到一张心意卡片', body: '给你点了一杯热奶茶', read_at: new Date().toISOString(), created_at: new Date().toISOString() }
     ]
     return handled(state.notifications)
+  }
+
+  if (path === '/notifications/read-all' && method === 'POST') {
+    const now = new Date().toISOString()
+    let updated = 0
+    state.notifications = (state.notifications || []).map((item: any) => {
+      if (item.read_at) return item
+      updated += 1
+      return { ...item, read_at: now }
+    })
+    saveDemoState(state)
+    return handled({ updated })
   }
 
   if (path.startsWith('/notifications/') && path.endsWith('/read') && method === 'POST') {
@@ -684,6 +908,11 @@ function queryNumber(path: string, key: string) {
   const params = new URLSearchParams(query)
   const value = Number(params.get(key))
   return Number.isFinite(value) && value > 0 ? value : null
+}
+
+function reactionList(value: string) {
+  if (!value) return []
+  return String(value).split(',').filter(Boolean)
 }
 
 function getDemoState() {
@@ -780,6 +1009,7 @@ function defaultDemoState() {
     user: null,
     paired: false,
     inviteCode: '',
+    inviteExpiresAt: '',
     petEnabled: false,
     affectionCards: [
       {
@@ -806,6 +1036,7 @@ function defaultDemoState() {
         title: '下次见面时打开',
         content: '希望那天我们不要急着赶路，先好好抱一会儿。',
         open_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+        recipient_user_id: 2,
         created_at: now.toISOString(),
         sender_name: '我'
       },
@@ -814,6 +1045,7 @@ function defaultDemoState() {
         title: '今晚可以读的一封信',
         content: '如果今天很累，就把这句话当作我在你耳边说：辛苦了，已经很好了。',
         open_at: new Date(Date.now() - 1000 * 60).toISOString(),
+        recipient_user_id: null,
         created_at: now.toISOString(),
         sender_name: '对方'
       }

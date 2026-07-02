@@ -1,10 +1,12 @@
 package com.ourspace.modules.pet;
 
 import com.ourspace.common.ApiResponse;
+import com.ourspace.common.BusinessException;
 import com.ourspace.common.security.JwtAuthenticationFilter;
 import com.ourspace.common.tenant.TenantService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -56,6 +58,34 @@ public class PetController {
             return ps;
         }, keyHolder);
         return ApiResponse.ok(Map.of("id", keyHolder.getKey().longValue()));
+    }
+
+    @PutMapping("/profiles/{id}")
+    public ApiResponse<Map<String, Object>> updateProfile(HttpServletRequest request,
+                                                          @PathVariable long id,
+                                                          @RequestBody PetProfileUpdate body) {
+        long coupleId = enabledCoupleId(request);
+        requirePetProfile(id, coupleId);
+        jdbc.update("""
+                update pet_profiles set name = ?, breed = ?, birthday = ?, updated_at = now()
+                where id = ? and couple_id = ? and deleted_at is null
+                """, body.name(), body.breed(), body.birthday(), id, coupleId);
+        return ApiResponse.ok(Map.of("id", id));
+    }
+
+    @DeleteMapping("/profiles/{id}")
+    public ApiResponse<Map<String, Object>> deleteProfile(HttpServletRequest request, @PathVariable long id) {
+        long coupleId = enabledCoupleId(request);
+        requirePetProfile(id, coupleId);
+        jdbc.update("""
+                update pet_profiles set deleted_at = now()
+                where id = ? and couple_id = ? and deleted_at is null
+                """, id, coupleId);
+        jdbc.update("""
+                update pet_events set deleted_at = now()
+                where pet_id = ? and couple_id = ? and deleted_at is null
+                """, id, coupleId);
+        return ApiResponse.ok(Map.of("id", id, "deleted", true));
     }
 
     @GetMapping("/events")
@@ -114,6 +144,17 @@ public class PetController {
         return ApiResponse.ok(Map.of("id", keyHolder.getKey().longValue()));
     }
 
+    @DeleteMapping("/events/{id}")
+    public ApiResponse<Map<String, Object>> deleteEvent(HttpServletRequest request, @PathVariable long id) {
+        long coupleId = enabledCoupleId(request);
+        requirePetEvent(id, coupleId);
+        jdbc.update("""
+                update pet_events set deleted_at = now()
+                where id = ? and couple_id = ? and deleted_at is null
+                """, id, coupleId);
+        return ApiResponse.ok(Map.of("id", id, "deleted", true));
+    }
+
     private long enabledCoupleId(HttpServletRequest request) {
         long coupleId = tenantService.requireCoupleId(currentUser(request));
         tenantService.requireModuleEnabled(coupleId, "pet");
@@ -124,7 +165,30 @@ public class PetController {
         return (Long) request.getAttribute(JwtAuthenticationFilter.USER_ID_ATTR);
     }
 
+    private void requirePetProfile(long id, long coupleId) {
+        Integer count = jdbc.queryForObject("""
+                select count(*) from pet_profiles
+                where id = ? and couple_id = ? and deleted_at is null
+                """, Integer.class, id, coupleId);
+        if (count == null || count == 0) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "PET_NOT_FOUND");
+        }
+    }
+
+    private void requirePetEvent(long id, long coupleId) {
+        Integer count = jdbc.queryForObject("""
+                select count(*) from pet_events
+                where id = ? and couple_id = ? and deleted_at is null
+                """, Integer.class, id, coupleId);
+        if (count == null || count == 0) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "PET_EVENT_NOT_FOUND");
+        }
+    }
+
     public record PetProfileCreate(@NotBlank String name, String breed, LocalDate birthday, Long avatarFileId) {
+    }
+
+    public record PetProfileUpdate(@NotBlank String name, String breed, LocalDate birthday) {
     }
 
     public record PetEventCreate(long petId, @NotBlank String eventType, String content, Long fileId) {

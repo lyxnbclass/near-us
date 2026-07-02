@@ -1,10 +1,12 @@
 package com.ourspace.interaction;
 
 import com.ourspace.common.ApiResponse;
+import com.ourspace.common.BusinessException;
 import com.ourspace.common.security.JwtAuthenticationFilter;
 import com.ourspace.common.tenant.TenantService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -103,11 +105,47 @@ public class InteractionController {
     public ApiResponse<Map<String, Object>> completeWish(HttpServletRequest request, @PathVariable long id) {
         long userId = currentUser(request);
         long coupleId = tenantService.requireCoupleId(userId);
+        requireWish(id, coupleId);
         jdbc.update("""
                 update wishes set completed = true, completed_by = ?, completed_at = now()
                 where id = ? and couple_id = ? and deleted_at is null
                 """, userId, id, coupleId);
         return ApiResponse.ok(Map.of("id", id, "completed", true));
+    }
+
+    @PostMapping("/wishes/{id}/reopen")
+    public ApiResponse<Map<String, Object>> reopenWish(HttpServletRequest request, @PathVariable long id) {
+        long coupleId = tenantService.requireCoupleId(currentUser(request));
+        requireWish(id, coupleId);
+        jdbc.update("""
+                update wishes set completed = false, completed_by = null, completed_at = null
+                where id = ? and couple_id = ? and deleted_at is null
+                """, id, coupleId);
+        return ApiResponse.ok(Map.of("id", id, "completed", false));
+    }
+
+    @PutMapping("/wishes/{id}")
+    public ApiResponse<Map<String, Object>> updateWish(HttpServletRequest request,
+                                                       @PathVariable long id,
+                                                       @RequestBody WishUpdate body) {
+        long coupleId = tenantService.requireCoupleId(currentUser(request));
+        requireWish(id, coupleId);
+        jdbc.update("""
+                update wishes set title = ?, note = ?, updated_at = now()
+                where id = ? and couple_id = ? and deleted_at is null
+                """, body.title(), body.note(), id, coupleId);
+        return ApiResponse.ok(Map.of("id", id));
+    }
+
+    @DeleteMapping("/wishes/{id}")
+    public ApiResponse<Map<String, Object>> deleteWish(HttpServletRequest request, @PathVariable long id) {
+        long coupleId = tenantService.requireCoupleId(currentUser(request));
+        requireWish(id, coupleId);
+        jdbc.update("""
+                update wishes set deleted_at = now()
+                where id = ? and couple_id = ? and deleted_at is null
+                """, id, coupleId);
+        return ApiResponse.ok(Map.of("id", id, "deleted", true));
     }
 
     @GetMapping("/daily-topic")
@@ -178,6 +216,16 @@ public class InteractionController {
         }
     }
 
+    private void requireWish(long id, long coupleId) {
+        Integer count = jdbc.queryForObject("""
+                select count(*) from wishes
+                where id = ? and couple_id = ? and deleted_at is null
+                """, Integer.class, id, coupleId);
+        if (count == null || count == 0) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "WISH_NOT_FOUND");
+        }
+    }
+
     private long currentUser(HttpServletRequest request) {
         return (Long) request.getAttribute(JwtAuthenticationFilter.USER_ID_ATTR);
     }
@@ -186,6 +234,9 @@ public class InteractionController {
     }
 
     public record WishCreate(@NotBlank String title, String note) {
+    }
+
+    public record WishUpdate(@NotBlank String title, String note) {
     }
 
     public record TopicAnswerCreate(@NotBlank String answer) {

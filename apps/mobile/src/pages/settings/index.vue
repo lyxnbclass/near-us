@@ -25,29 +25,23 @@
           <text>解绑申请已提交。</text>
           <text class="muted">冷静期内不会继续写入新的情侣空间内容；撤销后会恢复正常。</text>
           <view class="split-actions">
-            <view class="ghost-button" :class="{ disabled: relationSaving }" @click="cancelUnbind">
-              {{ relationSaving ? '处理中' : '撤销解绑' }}
-            </view>
-            <view class="danger-button" :class="{ disabled: relationSaving }" @click="confirmUnbind">
-              {{ relationSaving ? '处理中' : '确认解除' }}
-            </view>
+            <view class="ghost-button" @click="cancelUnbind">撤销解绑</view>
+            <view class="danger-button" @click="confirmUnbind">确认解除</view>
           </view>
         </view>
-        <view v-else-if="paired" class="ghost-button" :class="{ disabled: relationSaving }" @click="requestUnbind">
-          {{ relationSaving ? '处理中' : '申请解绑' }}
-        </view>
+        <view v-else-if="paired" class="ghost-button" @click="requestUnbind">申请解绑</view>
         <view v-else class="button" @click="goPair">去配对</view>
       </view>
 
       <view class="section-head">
         <text>可选模块</text>
       </view>
-      <view class="card glass-card module-row" :class="{ pending: moduleSaving }">
+      <view class="card glass-card module-row">
         <view>
           <text class="row-title">宠物栏</text>
-          <text class="muted desc">{{ moduleSaving ? '正在保存模块状态' : '宠物档案、动态和宠物相册入口' }}</text>
+          <text class="muted desc">宠物档案、动态和宠物相册入口</text>
         </view>
-        <switch :checked="petEnabled" :disabled="moduleSaving" color="#C9A46A" @change="togglePet" />
+        <switch :checked="petEnabled" color="#C9A46A" @change="togglePet" />
       </view>
 
       <view class="section-head">
@@ -62,24 +56,16 @@
       </view>
 
       <view class="section-head">
-        <text>账号</text>
+        <text>账号与演示</text>
       </view>
-      <view class="card glass-card account-row">
+      <view class="card glass-card account-card">
         <view>
-          <text class="row-title">退出登录</text>
-          <text class="muted desc">只清除当前登录态，不删除你们的空间数据。</text>
+          <text class="row-title">当前登录</text>
+          <text class="muted desc">{{ currentUserText }}</text>
         </view>
-        <view class="ghost-button small" :class="{ disabled: logoutSaving }" @click="logout">
-          {{ logoutSaving ? '退出中' : '退出' }}
-        </view>
-      </view>
-      <view class="card glass-card account-row danger-lite">
-        <view>
-          <text class="row-title">重置演示数据</text>
-          <text class="muted desc">恢复默认测试数据，并清除当前登录态。</text>
-        </view>
-        <view class="danger-button small" :class="{ disabled: resetSaving }" @click="resetDemo">
-          {{ resetSaving ? '重置中' : '重置' }}
+        <view class="split-actions">
+          <view class="ghost-button" @click="logout">退出登录</view>
+          <view class="danger-button soft" @click="resetDemo">重置演示</view>
         </view>
       </view>
     </view>
@@ -97,10 +83,6 @@ const petEnabled = ref(false)
 const paired = ref(false)
 const couple = ref<any | null>(null)
 const members = ref<any[]>([])
-const moduleSaving = ref(false)
-const relationSaving = ref(false)
-const logoutSaving = ref(false)
-const resetSaving = ref(false)
 
 const statusText = computed(() => {
   if (!paired.value) return '未配对'
@@ -115,9 +97,17 @@ const relationText = computed(() => {
   return names ? `${names} 的私密空间` : '你们的私密空间正在运行'
 })
 
+const currentUserText = computed(() => {
+  const me = members.value.find(item => item.id === session.userId)
+  return me?.nickname ? `${me.nickname} 正在使用` : '开发登录账号'
+})
+
 onShow(load)
 
 async function load() {
+  if (!session.userId) {
+    await session.loadCouple().catch(() => {})
+  }
   const relation = await request<any>('/couples/me')
   paired.value = Boolean(relation.paired)
   couple.value = relation.couple || null
@@ -131,61 +121,36 @@ async function load() {
 }
 
 async function togglePet(event: any) {
-  if (moduleSaving.value) return
-  const previous = petEnabled.value
-  const nextEnabled = Boolean(event.detail.value)
   if (!paired.value || couple.value?.status !== 'active') {
     uni.showToast({ title: '配对正常后才能调整模块', icon: 'none' })
-    petEnabled.value = previous
+    petEnabled.value = false
     return
   }
-  petEnabled.value = nextEnabled
-  moduleSaving.value = true
-  try {
-    await request('/modules/pet', { method: 'PUT', data: { enabled: nextEnabled } })
-    uni.showToast({ title: nextEnabled ? '宠物栏已开启' : '宠物栏已关闭', icon: 'none' })
-  } catch (error) {
-    petEnabled.value = previous
-    uni.showToast({ title: '模块状态保存失败', icon: 'none' })
-  } finally {
-    moduleSaving.value = false
-  }
+  petEnabled.value = event.detail.value
+  await request('/modules/pet', { method: 'PUT', data: { enabled: petEnabled.value } })
 }
 
 function requestUnbind() {
-  if (relationSaving.value) return
   uni.showModal({
     title: '申请解绑',
     content: '提交后会进入冷静期，情侣空间将暂时不能继续写入新内容。',
     confirmText: '提交',
     success: async result => {
       if (!result.confirm) return
-      relationSaving.value = true
-      try {
-        await request('/couples/unbind-request', { method: 'POST' })
-        uni.showToast({ title: '已进入冷静期', icon: 'none' })
-        await load()
-      } finally {
-        relationSaving.value = false
-      }
+      await request('/couples/unbind-request', { method: 'POST' })
+      uni.showToast({ title: '已进入冷静期', icon: 'none' })
+      await load()
     }
   })
 }
 
 async function cancelUnbind() {
-  if (relationSaving.value) return
-  relationSaving.value = true
-  try {
-    await request('/couples/unbind-cancel', { method: 'POST' })
-    uni.showToast({ title: '已撤销解绑', icon: 'none' })
-    await load()
-  } finally {
-    relationSaving.value = false
-  }
+  await request('/couples/unbind-cancel', { method: 'POST' })
+  uni.showToast({ title: '已撤销解绑', icon: 'none' })
+  await load()
 }
 
 function confirmUnbind() {
-  if (relationSaving.value) return
   uni.showModal({
     title: '确认解除关系',
     content: '确认后双方会退出当前空间，之后需要重新配对才能继续使用情侣空间。',
@@ -193,17 +158,12 @@ function confirmUnbind() {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
-      relationSaving.value = true
-      try {
-        await request('/couples/unbind-confirm', { method: 'POST' })
-        uni.showToast({ title: '已解除配对', icon: 'none' })
-        paired.value = false
-        couple.value = null
-        members.value = []
-        uni.navigateTo({ url: '/pages/pair/index' })
-      } finally {
-        relationSaving.value = false
-      }
+      await request('/couples/unbind-confirm', { method: 'POST' })
+      uni.showToast({ title: '已解除配对', icon: 'none' })
+      paired.value = false
+      couple.value = null
+      members.value = []
+      uni.navigateTo({ url: '/pages/pair/index' })
     }
   })
 }
@@ -217,36 +177,30 @@ function goPrivacy() {
 }
 
 function logout() {
-  if (logoutSaving.value) return
   uni.showModal({
-    title: '退出登录？',
-    content: '退出后需要重新登录才能进入情侣空间，本地测试数据会保留。',
+    title: '退出登录',
+    content: '退出后需要重新登录才能进入空间。',
     confirmText: '退出',
     success: result => {
       if (!result.confirm) return
-      logoutSaving.value = true
       session.logout()
       uni.showToast({ title: '已退出登录', icon: 'none' })
-      uni.navigateTo({ url: '/pages/auth/index' })
-      logoutSaving.value = false
+      uni.reLaunch({ url: '/pages/auth/index' })
     }
   })
 }
 
 function resetDemo() {
-  if (resetSaving.value) return
   uni.showModal({
-    title: '重置演示数据？',
-    content: '这会恢复默认测试数据，并清除当前登录态。你新增的本地演示内容会被覆盖。',
+    title: '重置演示数据',
+    content: '这会清空本机演示数据和登录状态，恢复到初始示例。',
     confirmText: '重置',
     confirmColor: '#9E4D43',
     success: result => {
       if (!result.confirm) return
-      resetSaving.value = true
       session.resetDemo()
       uni.showToast({ title: '演示数据已重置', icon: 'none' })
-      uni.navigateTo({ url: '/pages/auth/index' })
-      resetSaving.value = false
+      uni.reLaunch({ url: '/pages/auth/index' })
     }
   })
 }
@@ -292,6 +246,7 @@ function resetDemo() {
 }
 
 .relation-card,
+.account-card,
 .pending-box {
   display: grid;
   gap: 20rpx;
@@ -299,16 +254,11 @@ function resetDemo() {
 
 .relation-top,
 .module-row,
-.account-row,
 .section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 18rpx;
-}
-
-.module-row.pending {
-  opacity: 0.76;
 }
 
 .card-title,
@@ -377,21 +327,9 @@ function resetDemo() {
   background: #9e4d43;
 }
 
-.danger-lite {
-  border-color: rgba(158, 77, 67, 0.22);
-}
-
-.ghost-button.disabled,
-.danger-button.disabled {
-  opacity: 0.52;
-}
-
-.ghost-button.small,
-.danger-button.small {
-  flex: 0 0 auto;
-  min-width: 128rpx;
-  min-height: 64rpx;
-  padding: 0 24rpx;
+.danger-button.soft {
+  color: #9e4d43;
+  background: rgba(158, 77, 67, 0.1);
 }
 
 .desc {

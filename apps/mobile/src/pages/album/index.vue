@@ -40,8 +40,23 @@
           <image v-if="getImageUrl(item)" class="photo" :src="getImageUrl(item)" mode="aspectFill" />
           <view v-else class="photo-placeholder">照片正在生成预览</view>
           <view class="item-body">
-            <text class="caption">{{ item.caption || '那一刻，我们都在。' }}</text>
-            <text class="muted">{{ formatTime(item.created_at || item.taken_at) }}</text>
+            <view v-if="editingId !== item.id" class="caption-view">
+              <text class="caption">{{ item.caption || '那一刻，我们都在。' }}</text>
+              <text class="muted">{{ albumTimeText(item) }}</text>
+              <view class="item-actions">
+                <text @click="startEdit(item)">编辑文案</text>
+                <text class="delete-link" @click="remove(item)">删除</text>
+              </view>
+            </view>
+            <view v-else class="edit-box" :class="{ 'tap-glow': editGlow }">
+              <textarea v-model="editCaption" maxlength="80" placeholder="给这张回忆换一句话" />
+              <view class="edit-actions">
+                <view class="ghost-button" @click="cancelEdit">取消</view>
+                <view class="button" :class="{ disabled: editing }" @click="saveEdit(item)">
+                  {{ editing ? '保存中' : '保存文案' }}
+                </view>
+              </view>
+            </view>
           </view>
         </view>
         <view v-if="!albums.length" class="card glass-card empty">
@@ -66,7 +81,11 @@ const selectedSize = ref(0)
 const caption = ref('')
 const albums = ref<any[]>([])
 const saving = ref(false)
+const editingId = ref<number | null>(null)
+const editCaption = ref('')
+const editing = ref(false)
 const savedGlow = ref(false)
+const editGlow = ref(false)
 
 onShow(load)
 
@@ -135,6 +154,52 @@ async function create() {
   }
 }
 
+function startEdit(item: any) {
+  editingId.value = item.id
+  editCaption.value = item.caption || ''
+}
+
+function cancelEdit() {
+  editingId.value = null
+  editCaption.value = ''
+}
+
+async function saveEdit(item: any) {
+  if (editing.value) return
+  editing.value = true
+  try {
+    await request(`/albums/${item.id}`, {
+      method: 'PUT',
+      data: { caption: editCaption.value.trim() }
+    })
+    editGlow.value = true
+    uni.showToast({ title: '文案已更新', icon: 'none' })
+    setTimeout(() => {
+      editGlow.value = false
+    }, 650)
+    cancelEdit()
+    await load()
+  } finally {
+    editing.value = false
+  }
+}
+
+function remove(item: any) {
+  uni.showModal({
+    title: '删除这段回忆',
+    content: `确认删除“${item.caption || '这一刻'}”吗？`,
+    confirmText: '删除',
+    confirmColor: '#9E4D43',
+    success: async result => {
+      if (!result.confirm) return
+      await request(`/albums/${item.id}`, { method: 'DELETE' })
+      if (editingId.value === item.id) cancelEdit()
+      uni.showToast({ title: '已删除', icon: 'none' })
+      await load()
+    }
+  })
+}
+
 function getImageUrl(item: any) {
   return item.local_url || item.localUrl || item.object_key || ''
 }
@@ -152,6 +217,13 @@ function formatTime(value?: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function albumTimeText(item: any) {
+  if (item.updated_at && item.updated_at !== item.created_at) {
+    return `更新于 ${formatTime(item.updated_at)}`
+  }
+  return formatTime(item.created_at || item.taken_at)
 }
 </script>
 
@@ -308,6 +380,8 @@ textarea {
 }
 
 .item-body,
+.caption-view,
+.edit-box,
 .empty {
   display: grid;
   gap: 10rpx;
@@ -318,5 +392,28 @@ textarea {
   color: var(--color-text);
   font-size: 30rpx;
   line-height: 1.55;
+}
+
+.item-actions,
+.edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  color: var(--color-accent);
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.delete-link {
+  color: #9e4d43;
+}
+
+.edit-actions {
+  align-items: stretch;
+}
+
+.edit-actions .ghost-button,
+.edit-actions .button {
+  flex: 1;
 }
 </style>
