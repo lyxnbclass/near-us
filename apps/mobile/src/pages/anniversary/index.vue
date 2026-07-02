@@ -103,6 +103,7 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { request } from '@/api/client'
+import { ensurePairedSpace } from '@/utils/spaceGuard'
 
 const title = ref('')
 const eventDate = ref('')
@@ -134,6 +135,7 @@ const nextAnniversary = computed(() => sortedByNext(anniversaries.value)[0])
 onShow(load)
 
 async function load() {
+  if (!(await ensurePairedSpace())) return
   const list = await request<any[]>('/anniversaries')
   anniversaries.value = sortedByNext(list)
 }
@@ -172,6 +174,8 @@ async function save() {
       savedGlow.value = false
     }, 650)
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: error?.message || '保存纪念日失败', icon: 'none' })
   } finally {
     saving.value = false
   }
@@ -194,10 +198,14 @@ function remove(item: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
-      await request(`/anniversaries/${item.id}`, { method: 'DELETE' })
-      if (editingId.value === item.id) resetForm()
-      uni.showToast({ title: '已删除', icon: 'none' })
-      await load()
+      try {
+        await request(`/anniversaries/${item.id}`, { method: 'DELETE' })
+        if (editingId.value === item.id) resetForm()
+        uni.showToast({ title: '已删除', icon: 'none' })
+        await load()
+      } catch (error: any) {
+        uni.showToast({ title: error?.message || '删除失败', icon: 'none' })
+      }
     }
   })
 }

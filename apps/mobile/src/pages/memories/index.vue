@@ -79,6 +79,7 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { request } from '@/api/client'
+import { ensurePairedSpace } from '@/utils/spaceGuard'
 
 const memory = ref<any>(null)
 const activeFilter = ref<'all' | 'albums' | 'diaries'>('all')
@@ -101,6 +102,7 @@ const totalCount = computed(() => {
 onShow(load)
 
 async function load() {
+  if (!(await ensurePairedSpace())) return
   memory.value = await request('/memories/today')
 }
 
