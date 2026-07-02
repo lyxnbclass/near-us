@@ -1,9 +1,11 @@
 package com.ourspace.status;
 
 import com.ourspace.common.ApiResponse;
+import com.ourspace.common.BusinessException;
 import com.ourspace.common.security.JwtAuthenticationFilter;
 import com.ourspace.common.tenant.TenantService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -82,12 +84,39 @@ public class StatusController {
         if (count == null || count == 0) {
             return ApiResponse.fail("STATUS_NOT_FOUND");
         }
-        jdbc.update("""
-                insert into status_reactions(couple_id, status_id, created_by, reaction_key)
-                values(?, ?, ?, ?)
-                """, coupleId, id, userId, body.reactionKey());
-        notifyPartner(coupleId, userId, "status.reacted", "TA 回应了你的此刻", body.reactionKey());
+        var existing = jdbc.queryForObject("""
+                select count(*) from status_reactions
+                where couple_id = ? and status_id = ? and created_by = ? and reaction_key = ?
+                """, Integer.class, coupleId, id, userId, body.reactionKey());
+        if (existing == null || existing == 0) {
+            jdbc.update("""
+                    insert into status_reactions(couple_id, status_id, created_by, reaction_key)
+                    values(?, ?, ?, ?)
+                    """, coupleId, id, userId, body.reactionKey());
+            notifyPartner(coupleId, userId, "status.reacted", "TA 回应了你的此刻", body.reactionKey());
+        }
         return ApiResponse.ok(Map.of("id", id, "reactionKey", body.reactionKey()));
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Map<String, Object>> delete(HttpServletRequest request, @PathVariable long id) {
+        long userId = currentUser(request);
+        long coupleId = tenantService.requireCoupleId(userId);
+        var rows = jdbc.queryForList("""
+                select created_by from statuses
+                where id = ? and couple_id = ? and deleted_at is null
+                """, id, coupleId);
+        if (rows.isEmpty()) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "STATUS_NOT_FOUND");
+        }
+        if (((Number) rows.get(0).get("created_by")).longValue() != userId) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "STATUS_NOT_OWNER");
+        }
+        jdbc.update("""
+                update statuses set deleted_at = now()
+                where id = ? and couple_id = ? and created_by = ? and deleted_at is null
+                """, id, coupleId, userId);
+        return ApiResponse.ok(Map.of("id", id, "deleted", true));
     }
 
     private void notifyPartner(long coupleId, long userId, String type, String title, String body) {

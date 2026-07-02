@@ -46,9 +46,16 @@
             <text v-for="(reaction, index) in reactionList(item)" :key="index" class="reaction-pill">{{ reaction }}</text>
           </view>
           <view class="reaction-actions">
-            <text v-for="reaction in reactions" :key="reaction" class="reaction-action" @click="react(item, reaction)">
+            <text
+              v-for="reaction in reactions"
+              :key="reaction"
+              class="reaction-action"
+              :class="{ active: hasReaction(item, reaction) }"
+              @click="react(item, reaction)"
+            >
               {{ reaction }}
             </text>
+            <text v-if="canDelete(item)" class="delete-action" @click="remove(item)">撤回</text>
           </view>
         </view>
         <view v-if="!statuses.length" class="card glass-card empty">
@@ -64,9 +71,11 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { request } from '@/api/client'
+import { useSessionStore } from '@/stores/session'
 
 const tags = ['在想你', '想被抱一下', '在加班', '刚吃饭', '睡前想你']
 const reactions = ['抱抱', '收到啦', '想你']
+const session = useSessionStore()
 const content = ref('')
 const moodTag = ref('在想你')
 const selectedPhoto = ref('')
@@ -81,6 +90,9 @@ const canPublish = computed(() => content.value.trim() || selectedPhoto.value)
 onShow(load)
 
 async function load() {
+  if (!session.userId) {
+    await session.loadCouple().catch(() => {})
+  }
   statuses.value = await request('/statuses')
 }
 
@@ -107,17 +119,44 @@ function reactionList(item: any) {
   return String(item.reactions).split(',').filter(Boolean)
 }
 
+function hasReaction(item: any, reactionKey: string) {
+  return reactionList(item).includes(reactionKey)
+}
+
 function statusImage(item: any) {
   return item.local_url || item.localUrl || item.object_key || ''
 }
 
 async function react(item: any, reactionKey: string) {
+  if (hasReaction(item, reactionKey)) {
+    uni.showToast({ title: '已经回应过啦', icon: 'none' })
+    return
+  }
   await request(`/statuses/${item.id}/reactions`, {
     method: 'POST',
     data: { reactionKey }
   })
   uni.showToast({ title: `已回应：${reactionKey}`, icon: 'none' })
   await load()
+}
+
+function canDelete(item: any) {
+  return item.nickname === '我' || item.created_by === session.userId || item.createdBy === session.userId
+}
+
+function remove(item: any) {
+  uni.showModal({
+    title: '撤回这一刻',
+    content: '确认撤回这条此刻吗？',
+    confirmText: '撤回',
+    confirmColor: '#9E4D43',
+    success: async result => {
+      if (!result.confirm) return
+      await request(`/statuses/${item.id}`, { method: 'DELETE' })
+      uni.showToast({ title: '已撤回', icon: 'none' })
+      await load()
+    }
+  })
 }
 
 async function publish() {
@@ -302,7 +341,8 @@ textarea {
 }
 
 .reaction-pill,
-.reaction-action {
+.reaction-action,
+.delete-action {
   border-radius: 999rpx;
   padding: 10rpx 16rpx;
   font-size: 24rpx;
@@ -317,6 +357,18 @@ textarea {
   color: var(--color-muted);
   border: 1rpx solid var(--color-line);
   background: rgba(255, 253, 250, 0.54);
+}
+
+.reaction-action.active {
+  color: var(--color-rose);
+  border-color: rgba(143, 77, 77, 0.32);
+  background: rgba(217, 167, 160, 0.16);
+}
+
+.delete-action {
+  color: #9e4d43;
+  border: 1rpx solid rgba(158, 77, 67, 0.2);
+  background: rgba(158, 77, 67, 0.08);
 }
 
 .status-text {

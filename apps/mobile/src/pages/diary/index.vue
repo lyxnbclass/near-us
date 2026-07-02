@@ -55,15 +55,46 @@
       <view v-else class="detail-view">
         <view class="detail-head">
           <view class="ghost-button small" @click="closeDetail">返回</view>
-          <text class="badge" :class="currentDiary.visibility">
-            {{ currentDiary.visibility === 'private' ? '私密' : '共享' }}
-          </text>
+          <view class="detail-actions">
+            <text class="action-link" @click="startEdit">{{ editing ? '编辑中' : '编辑' }}</text>
+            <text class="delete-link" @click="removeDiary">删除</text>
+            <text class="badge" :class="currentDiary.visibility">
+              {{ currentDiary.visibility === 'private' ? '私密' : '共享' }}
+            </text>
+          </view>
         </view>
 
-        <view class="card glass-card diary-detail">
+        <view v-if="!editing" class="card glass-card diary-detail">
           <text class="detail-title">{{ currentDiary.title }}</text>
-          <text class="muted">{{ formatTime(currentDiary.created_at) }}</text>
+          <text class="muted">{{ diaryTimeText }}</text>
           <text class="diary-content">{{ currentDiary.content }}</text>
+        </view>
+
+        <view v-else class="card glass-card composer" :class="{ 'tap-glow': editGlow }">
+          <input v-model="editTitle" placeholder="日记标题" />
+          <textarea v-model="editContent" maxlength="600" placeholder="调整这页日记的内容" />
+          <view class="segmented">
+            <view
+              class="segment"
+              :class="{ active: editVisibility === 'private' }"
+              @click="editVisibility = 'private'"
+            >
+              只给自己
+            </view>
+            <view
+              class="segment"
+              :class="{ active: editVisibility === 'shared' }"
+              @click="editVisibility = 'shared'"
+            >
+              和 TA 共享
+            </view>
+          </view>
+          <view class="edit-actions">
+            <view class="ghost-button" @click="cancelEdit">取消</view>
+            <view class="button" :class="{ disabled: !canUpdate || updating }" @click="saveEdit">
+              {{ updating ? '保存中' : '保存修改' }}
+            </view>
+          </view>
         </view>
 
         <view v-if="currentDiary.visibility === 'shared'" class="comments">
@@ -104,12 +135,24 @@ const diaries = ref<any[]>([])
 const currentDiary = ref<any | null>(null)
 const comments = ref<any[]>([])
 const commentText = ref('')
+const editing = ref(false)
+const editTitle = ref('')
+const editContent = ref('')
+const editVisibility = ref<'private' | 'shared'>('private')
 const saving = ref(false)
+const updating = ref(false)
 const commenting = ref(false)
 const savedGlow = ref(false)
+const editGlow = ref(false)
 const commentGlow = ref(false)
 
 const canSave = computed(() => title.value.trim() && content.value.trim())
+const canUpdate = computed(() => editTitle.value.trim() && editContent.value.trim())
+const diaryTimeText = computed(() => {
+  if (!currentDiary.value) return ''
+  const updated = currentDiary.value.updated_at && currentDiary.value.updated_at !== currentDiary.value.created_at
+  return updated ? `更新于 ${formatTime(currentDiary.value.updated_at)}` : formatTime(currentDiary.value.created_at)
+})
 
 onShow(load)
 
@@ -149,6 +192,7 @@ async function create() {
 async function open(id: number) {
   currentDiary.value = await request<any>(`/diaries/${id}`)
   comments.value = currentDiary.value?.comments || []
+  editing.value = false
   if (currentDiary.value?.visibility === 'shared' && !comments.value.length) {
     comments.value = await request<any[]>(`/diaries/${id}/comments`)
   }
@@ -158,6 +202,66 @@ function closeDetail() {
   currentDiary.value = null
   comments.value = []
   commentText.value = ''
+  cancelEdit()
+}
+
+function startEdit() {
+  if (!currentDiary.value) return
+  editTitle.value = currentDiary.value.title || ''
+  editContent.value = currentDiary.value.content || ''
+  editVisibility.value = currentDiary.value.visibility || 'private'
+  editing.value = true
+}
+
+function cancelEdit() {
+  editing.value = false
+  editTitle.value = ''
+  editContent.value = ''
+  editVisibility.value = 'private'
+}
+
+async function saveEdit() {
+  if (!currentDiary.value || !canUpdate.value || updating.value) {
+    uni.showToast({ title: '标题和内容都要写', icon: 'none' })
+    return
+  }
+  updating.value = true
+  try {
+    await request(`/diaries/${currentDiary.value.id}`, {
+      method: 'PUT',
+      data: {
+        title: editTitle.value.trim(),
+        content: editContent.value.trim(),
+        visibility: editVisibility.value
+      }
+    })
+    editGlow.value = true
+    uni.showToast({ title: '修改已保存', icon: 'none' })
+    setTimeout(() => {
+      editGlow.value = false
+    }, 650)
+    await open(currentDiary.value.id)
+    await load()
+  } finally {
+    updating.value = false
+  }
+}
+
+function removeDiary() {
+  if (!currentDiary.value) return
+  uni.showModal({
+    title: '删除这页日记',
+    content: `确认删除“${currentDiary.value.title || '未命名的一页'}”吗？`,
+    confirmText: '删除',
+    confirmColor: '#9E4D43',
+    success: async result => {
+      if (!result.confirm || !currentDiary.value) return
+      await request(`/diaries/${currentDiary.value.id}`, { method: 'DELETE' })
+      uni.showToast({ title: '已删除', icon: 'none' })
+      closeDetail()
+      await load()
+    }
+  })
 }
 
 async function sendComment() {
@@ -290,7 +394,9 @@ textarea {
 
 .section-head,
 .detail-head,
-.item {
+.item,
+.detail-actions,
+.edit-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -343,6 +449,31 @@ textarea {
   background: rgba(255, 253, 252, 0.66);
   border: 1rpx solid rgba(46, 42, 39, 0.1);
   font-weight: 700;
+}
+
+.detail-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.action-link,
+.delete-link {
+  color: var(--color-accent);
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.delete-link {
+  color: #9e4d43;
+}
+
+.edit-actions {
+  align-items: stretch;
+}
+
+.edit-actions .ghost-button,
+.edit-actions .button {
+  flex: 1;
 }
 
 .detail-title {

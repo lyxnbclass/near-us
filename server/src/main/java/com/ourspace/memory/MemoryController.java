@@ -33,7 +33,8 @@ public class MemoryController {
 
         var albums = jdbc.queryForList("""
                 select ai.id, ai.caption, ai.created_at, ai.taken_at, ai.scene_type,
-                       f.object_key, f.mime_type, u.nickname as creator_name
+                       f.object_key, f.mime_type, u.nickname as creator_name,
+                       year(curdate()) - year(coalesce(ai.taken_at, ai.created_at)) as years_ago
                 from album_items ai
                 join files f on f.id = ai.file_id
                 join users u on u.id = ai.created_by
@@ -46,7 +47,8 @@ public class MemoryController {
                 """, coupleId, month, day);
 
         var diaries = jdbc.queryForList("""
-                select id, owner_user_id, title, visibility, created_at, updated_at
+                select id, owner_user_id, title, visibility, created_at, updated_at,
+                       year(curdate()) - year(created_at) as years_ago
                 from diaries
                 where couple_id = ? and deleted_at is null
                   and month(created_at) = ? and day(created_at) = ?

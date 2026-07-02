@@ -20,6 +20,26 @@
             <text class="muted">轻点选择</text>
           </view>
         </picker>
+        <view class="type-row">
+          <view
+            v-for="type in eventTypes"
+            :key="type.key"
+            class="type-pill"
+            :class="{ active: eventType === type.key }"
+            @click="eventType = type.key"
+          >
+            {{ type.name }}
+          </view>
+        </view>
+        <view class="remind-row">
+          <picker mode="time" :value="remindTime" @change="pickRemindTime">
+            <view class="date-picker">
+              <text>{{ remindTime || '不设置提醒时间' }}</text>
+              <text class="muted">当天提醒</text>
+            </view>
+          </picker>
+          <text v-if="remindTime" class="clear-time" @click="remindTime = ''">清除</text>
+        </view>
         <view class="theme-row">
           <view
             v-for="theme in themes"
@@ -40,7 +60,7 @@
         <text class="spot-label">最近的日子</text>
         <text class="spot-title">{{ nextAnniversary.title }}</text>
         <text class="spot-days">{{ describeDays(nextAnniversary) }}</text>
-        <text class="spot-date">{{ nextAnniversary.event_date }}</text>
+        <text class="spot-date">{{ nextAnniversary.event_date }} · {{ typeName(nextAnniversary.event_type) }}{{ nextAnniversary.remind_time ? ` · ${formatRemind(nextAnniversary.remind_time)}提醒` : '' }}</text>
       </view>
 
       <view class="section-head">
@@ -61,7 +81,8 @@
           </view>
           <view class="row-main">
             <text class="row-title">{{ item.title }}</text>
-            <text class="muted">{{ item.event_date }}</text>
+            <text class="muted">{{ item.event_date }} · {{ typeName(item.event_type) }}</text>
+            <text v-if="item.remind_time" class="remind-text">{{ formatRemind(item.remind_time) }}提醒</text>
             <view class="row-actions">
               <text @click="edit(item)">编辑</text>
               <text class="delete-link" @click="remove(item)">删除</text>
@@ -85,6 +106,8 @@ import { request } from '@/api/client'
 
 const title = ref('')
 const eventDate = ref('')
+const eventType = ref('custom')
+const remindTime = ref('')
 const cardTheme = ref('warm')
 const editingId = ref<number | null>(null)
 const anniversaries = ref<any[]>([])
@@ -95,6 +118,14 @@ const themes = [
   { key: 'warm', name: '暖光' },
   { key: 'rose', name: '暗玫瑰' },
   { key: 'gold', name: '金色' }
+]
+
+const eventTypes = [
+  { key: 'custom', name: '自定义' },
+  { key: 'love_start', name: '在一起' },
+  { key: 'birthday', name: '生日' },
+  { key: 'first_meet', name: '初见' },
+  { key: 'next_meet', name: '见面' }
 ]
 
 const canSave = computed(() => title.value.trim() && eventDate.value)
@@ -111,6 +142,10 @@ function pickDate(event: any) {
   eventDate.value = event.detail.value
 }
 
+function pickRemindTime(event: any) {
+  remindTime.value = event.detail.value
+}
+
 async function save() {
   if (!canSave.value || saving.value) {
     uni.showToast({ title: '先写名称并选择日期', icon: 'none' })
@@ -121,7 +156,8 @@ async function save() {
     const payload = {
       title: title.value.trim(),
       eventDate: eventDate.value,
-      eventType: 'custom',
+      eventType: eventType.value,
+      remindTime: remindTime.value || null,
       cardTheme: cardTheme.value
     }
     if (editingId.value) {
@@ -145,6 +181,8 @@ function edit(item: any) {
   editingId.value = item.id
   title.value = item.title || ''
   eventDate.value = normalizeDate(item.event_date)
+  eventType.value = item.event_type || 'custom'
+  remindTime.value = normalizeTime(item.remind_time)
   cardTheme.value = item.card_theme || 'warm'
 }
 
@@ -167,6 +205,8 @@ function remove(item: any) {
 function resetForm() {
   title.value = ''
   eventDate.value = ''
+  eventType.value = 'custom'
+  remindTime.value = ''
   cardTheme.value = 'warm'
   editingId.value = null
 }
@@ -211,6 +251,18 @@ function monthDay(dateText: string) {
 
 function normalizeDate(dateText: string) {
   return dateText?.includes('T') ? dateText.slice(0, 10) : dateText
+}
+
+function normalizeTime(timeText: string) {
+  return timeText ? String(timeText).slice(0, 5) : ''
+}
+
+function formatRemind(timeText: string) {
+  return normalizeTime(timeText)
+}
+
+function typeName(type: string) {
+  return eventTypes.find(item => item.key === type)?.name || '自定义'
 }
 
 function parseDate(dateText: string) {
@@ -309,12 +361,21 @@ input,
   font-size: 28rpx;
 }
 
+.type-row,
 .theme-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
   gap: 12rpx;
 }
 
+.type-row {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.theme-row {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.type-pill,
 .theme-pill {
   min-height: 72rpx;
   border-radius: 999rpx;
@@ -327,10 +388,25 @@ input,
   font-weight: 700;
 }
 
+.type-pill.active,
 .theme-pill.active {
   color: var(--color-text);
   border-color: rgba(201, 164, 106, 0.5);
   box-shadow: 0 14rpx 28rpx rgba(201, 164, 106, 0.16);
+}
+
+.remind-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12rpx;
+  align-items: center;
+}
+
+.clear-time,
+.remind-text {
+  color: var(--color-accent);
+  font-size: 24rpx;
+  font-weight: 700;
 }
 
 .button.disabled {

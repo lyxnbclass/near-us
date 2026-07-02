@@ -63,6 +63,7 @@ public class DiaryController {
     public ApiResponse<Map<String, Object>> create(HttpServletRequest request, @RequestBody DiaryCreate body) {
         long userId = currentUser(request);
         long coupleId = tenantService.requireCoupleId(userId);
+        validateVisibility(body.visibility());
         var encrypted = cryptoService.encrypt(body.content());
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
@@ -80,6 +81,35 @@ public class DiaryController {
             return ps;
         }, keyHolder);
         return ApiResponse.ok(Map.of("id", keyHolder.getKey().longValue()));
+    }
+
+    @PutMapping("/{id}")
+    public ApiResponse<Map<String, Object>> update(HttpServletRequest request,
+                                                   @PathVariable long id,
+                                                   @Valid @RequestBody DiaryUpdate body) {
+        long userId = currentUser(request);
+        long coupleId = tenantService.requireCoupleId(userId);
+        requireOwnedDiary(id, coupleId, userId);
+        validateVisibility(body.visibility());
+        var encrypted = cryptoService.encrypt(body.content());
+        jdbc.update("""
+                update diaries
+                set title = ?, visibility = ?, content_cipher = ?, content_nonce = ?, updated_at = now()
+                where id = ? and couple_id = ? and owner_user_id = ? and deleted_at is null
+                """, body.title(), body.visibility(), encrypted.cipher(), encrypted.nonce(), id, coupleId, userId);
+        return ApiResponse.ok(Map.of("id", id));
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Map<String, Object>> delete(HttpServletRequest request, @PathVariable long id) {
+        long userId = currentUser(request);
+        long coupleId = tenantService.requireCoupleId(userId);
+        requireOwnedDiary(id, coupleId, userId);
+        jdbc.update("""
+                update diaries set deleted_at = now()
+                where id = ? and couple_id = ? and owner_user_id = ? and deleted_at is null
+                """, id, coupleId, userId);
+        return ApiResponse.ok(Map.of("id", id, "deleted", true));
     }
 
     @GetMapping("/{id}/comments")
@@ -135,6 +165,20 @@ public class DiaryController {
         return diary;
     }
 
+    private Map<String, Object> requireOwnedDiary(long id, long coupleId, long userId) {
+        var diary = requireVisibleDiary(id, coupleId, userId);
+        if (((Number) diary.get("owner_user_id")).longValue() != userId) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "DIARY_NOT_OWNER");
+        }
+        return diary;
+    }
+
+    private void validateVisibility(String visibility) {
+        if (!"private".equals(visibility) && !"shared".equals(visibility)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_DIARY_VISIBILITY");
+        }
+    }
+
     private List<Map<String, Object>> comments(long diaryId, long coupleId) {
         var rows = jdbc.queryForList("""
                 select dc.id, dc.created_by, dc.content_cipher, dc.content_nonce, dc.created_at, u.nickname
@@ -156,6 +200,9 @@ public class DiaryController {
     }
 
     public record DiaryCreate(@NotBlank String title, @NotBlank String visibility, @NotBlank String content, Long coverFileId) {
+    }
+
+    public record DiaryUpdate(@NotBlank String title, @NotBlank String visibility, @NotBlank String content) {
     }
 
     public record DiaryCommentCreate(@NotBlank String content) {

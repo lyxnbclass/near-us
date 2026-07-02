@@ -95,6 +95,20 @@ public class PrivacyController {
         ));
     }
 
+    @PostMapping("/deletion-request/cancel")
+    public ApiResponse<Map<String, Object>> cancelDeletion(HttpServletRequest request) {
+        long userId = currentUser(request);
+        int updated = jdbc.update("""
+                update privacy_requests
+                set status = 'cancelled', completed_at = now(), note = 'User cancelled account deletion during cooling-off period'
+                where user_id = ? and request_type = 'account_deletion' and status = 'pending'
+                """, userId);
+        if (updated > 0) {
+            jdbc.update("update users set status = 'active' where id = ? and status = 'deletion_pending'", userId);
+        }
+        return ApiResponse.ok(Map.of("cancelled", updated));
+    }
+
     @GetMapping("/requests")
     public ApiResponse<Object> requests(HttpServletRequest request) {
         long userId = currentUser(request);

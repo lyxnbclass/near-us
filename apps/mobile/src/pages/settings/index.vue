@@ -54,6 +54,20 @@
         </view>
         <text class="arrow">›</text>
       </view>
+
+      <view class="section-head">
+        <text>账号与演示</text>
+      </view>
+      <view class="card glass-card account-card">
+        <view>
+          <text class="row-title">当前登录</text>
+          <text class="muted desc">{{ currentUserText }}</text>
+        </view>
+        <view class="split-actions">
+          <view class="ghost-button" @click="logout">退出登录</view>
+          <view class="danger-button soft" @click="resetDemo">重置演示</view>
+        </view>
+      </view>
     </view>
   </view>
 </template>
@@ -62,7 +76,9 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { request } from '@/api/client'
+import { useSessionStore } from '@/stores/session'
 
+const session = useSessionStore()
 const petEnabled = ref(false)
 const paired = ref(false)
 const couple = ref<any | null>(null)
@@ -81,9 +97,17 @@ const relationText = computed(() => {
   return names ? `${names} 的私密空间` : '你们的私密空间正在运行'
 })
 
+const currentUserText = computed(() => {
+  const me = members.value.find(item => item.id === session.userId)
+  return me?.nickname ? `${me.nickname} 正在使用` : '开发登录账号'
+})
+
 onShow(load)
 
 async function load() {
+  if (!session.userId) {
+    await session.loadCouple().catch(() => {})
+  }
   const relation = await request<any>('/couples/me')
   paired.value = Boolean(relation.paired)
   couple.value = relation.couple || null
@@ -151,6 +175,35 @@ function goPair() {
 function goPrivacy() {
   uni.navigateTo({ url: '/pages/privacy/index' })
 }
+
+function logout() {
+  uni.showModal({
+    title: '退出登录',
+    content: '退出后需要重新登录才能进入空间。',
+    confirmText: '退出',
+    success: result => {
+      if (!result.confirm) return
+      session.logout()
+      uni.showToast({ title: '已退出登录', icon: 'none' })
+      uni.reLaunch({ url: '/pages/auth/index' })
+    }
+  })
+}
+
+function resetDemo() {
+  uni.showModal({
+    title: '重置演示数据',
+    content: '这会清空本机演示数据和登录状态，恢复到初始示例。',
+    confirmText: '重置',
+    confirmColor: '#9E4D43',
+    success: result => {
+      if (!result.confirm) return
+      session.resetDemo()
+      uni.showToast({ title: '演示数据已重置', icon: 'none' })
+      uni.reLaunch({ url: '/pages/auth/index' })
+    }
+  })
+}
 </script>
 
 <style scoped lang="scss">
@@ -193,6 +246,7 @@ function goPrivacy() {
 }
 
 .relation-card,
+.account-card,
 .pending-box {
   display: grid;
   gap: 20rpx;
@@ -271,6 +325,11 @@ function goPrivacy() {
 .danger-button {
   color: #fff;
   background: #9e4d43;
+}
+
+.danger-button.soft {
+  color: #9e4d43;
+  background: rgba(158, 77, 67, 0.1);
 }
 
 .desc {

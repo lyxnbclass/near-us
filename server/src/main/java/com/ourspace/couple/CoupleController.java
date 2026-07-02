@@ -61,15 +61,33 @@ public class CoupleController {
     @PostMapping("/invite")
     public ApiResponse<Map<String, Object>> invite(HttpServletRequest request) {
         long userId = currentUser(request);
-        var existingMembership = jdbc.queryForObject(
-                "select count(*) from couple_members where user_id = ? and status = 'active' and left_at is null",
-                Integer.class, userId);
-        if (existingMembership != null && existingMembership > 0) {
-            throw new BusinessException(HttpStatus.CONFLICT, "ALREADY_HAS_COUPLE_OR_INVITE");
-        }
         String code = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        long coupleId = createInvitingCouple(userId, hash(code));
-        return ApiResponse.ok(Map.of("inviteCode", code, "coupleId", coupleId));
+        LocalDateTime expiresAt = LocalDateTime.now().plusHours(24);
+        var existingMemberships = jdbc.queryForList("""
+                select c.id, c.status
+                from couple_members cm
+                join couples c on c.id = cm.couple_id
+                where cm.user_id = ? and cm.status = 'active' and cm.left_at is null
+                  and c.deleted_at is null
+                order by cm.joined_at desc
+                limit 1
+                """, userId);
+        if (!existingMemberships.isEmpty()) {
+            var membership = existingMemberships.get(0);
+            String status = String.valueOf(membership.get("status"));
+            long coupleId = ((Number) membership.get("id")).longValue();
+            if (!"inviting".equals(status)) {
+                throw new BusinessException(HttpStatus.CONFLICT, "ALREADY_HAS_COUPLE_OR_INVITE");
+            }
+            jdbc.update("""
+                    update couples
+                    set invite_code_hash = ?, invite_expires_at = ?
+                    where id = ? and status = 'inviting' and deleted_at is null
+                    """, hash(code), expiresAt, coupleId);
+            return ApiResponse.ok(Map.of("inviteCode", code, "expiresAt", expiresAt, "coupleId", coupleId));
+        }
+        long coupleId = createInvitingCouple(userId, hash(code), expiresAt);
+        return ApiResponse.ok(Map.of("inviteCode", code, "expiresAt", expiresAt, "coupleId", coupleId));
     }
 
     @PostMapping("/bind")
@@ -92,8 +110,19 @@ public class CoupleController {
         if (memberCount == null || memberCount >= 2) {
             throw new BusinessException(HttpStatus.CONFLICT, "COUPLE_FULL");
         }
+        var selfInvite = jdbc.queryForObject("""
+                select count(*) from couple_members
+                where couple_id = ? and user_id = ? and status = 'active' and left_at is null
+                """, Integer.class, coupleId, userId);
+        if (selfInvite != null && selfInvite > 0) {
+            throw new BusinessException(HttpStatus.CONFLICT, "CANNOT_BIND_OWN_INVITE");
+        }
         jdbc.update("insert into couple_members(couple_id, user_id, role) values(?, ?, 'member')", coupleId, userId);
-        jdbc.update("update couples set status = 'active', paired_at = now(), invite_code_hash = null where id = ?", coupleId);
+        jdbc.update("""
+                update couples
+                set status = 'active', paired_at = now(), invite_code_hash = null, invite_expires_at = null
+                where id = ?
+                """, coupleId);
         return ApiResponse.ok(Map.of("coupleId", coupleId));
     }
 
@@ -149,7 +178,7 @@ public class CoupleController {
         return ApiResponse.ok(Map.of("coupleId", coupleId, "status", "unbound"));
     }
 
-    private long createInvitingCouple(long userId, String codeHash) {
+    private long createInvitingCouple(long userId, String codeHash, LocalDateTime expiresAt) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement ps = connection.prepareStatement("""
@@ -157,7 +186,7 @@ public class CoupleController {
                     values(?, ?, 'inviting')
                     """, Statement.RETURN_GENERATED_KEYS);
             ps.setString(1, codeHash);
-            ps.setObject(2, LocalDateTime.now().plusHours(24));
+            ps.setObject(2, expiresAt);
             return ps;
         }, keyHolder);
         long coupleId = keyHolder.getKey().longValue();

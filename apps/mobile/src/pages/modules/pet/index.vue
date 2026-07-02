@@ -10,8 +10,9 @@
 
       <view class="card glass-card composer" :class="{ 'tap-glow': profileGlow }">
         <view class="form-head">
-          <text class="form-title">宠物档案</text>
-          <text class="muted">{{ pets.length }} 位小成员</text>
+          <text class="form-title">{{ editingPetId ? '编辑宠物档案' : '宠物档案' }}</text>
+          <text v-if="!editingPetId" class="muted">{{ pets.length }} 位小成员</text>
+          <text v-else class="action-link" @click="resetProfileForm">取消</text>
         </view>
         <input v-model="name" placeholder="宠物名字" />
         <input v-model="breed" placeholder="品种，可不填" />
@@ -21,8 +22,8 @@
             <text class="muted">轻点选择</text>
           </view>
         </picker>
-        <view class="button" :class="{ disabled: !name.trim() || savingProfile }" @click="createProfile">
-          {{ savingProfile ? '保存中' : '添加宠物' }}
+        <view class="button" :class="{ disabled: !name.trim() || savingProfile }" @click="saveProfile">
+          {{ savingProfile ? '保存中' : editingPetId ? '保存修改' : '添加宠物' }}
         </view>
       </view>
 
@@ -38,6 +39,10 @@
           <view class="pet-main">
             <text class="pet-name">{{ pet.name }}</text>
             <text class="muted">{{ pet.breed || '共同照顾的小成员' }}</text>
+            <view class="pet-actions">
+              <text @click.stop="editProfile(pet)">编辑</text>
+              <text class="delete-link" @click.stop="removeProfile(pet)">删除</text>
+            </view>
           </view>
           <text class="select-mark">{{ selectedPetId === pet.id ? '记录中' : '选择' }}</text>
         </view>
@@ -88,7 +93,10 @@
           <image v-if="eventImage(event)" class="event-photo" :src="eventImage(event)" mode="aspectFill" />
           <text class="event-title">{{ event.pet_name }} · {{ event.event_type }}</text>
           <text class="event-content">{{ event.content || '留下了一个小瞬间。' }}</text>
-          <text class="muted">{{ event.mood || '日常' }} · {{ formatTime(event.created_at) }}</text>
+          <view class="event-meta">
+            <text class="muted">{{ event.mood || '日常' }} · {{ formatTime(event.created_at) }}</text>
+            <text class="delete-link" @click="removeEvent(event)">删除</text>
+          </view>
         </view>
         <view v-if="!events.length" class="card glass-card empty">
           <text>还没有宠物动态。</text>
@@ -107,6 +115,7 @@ import { request } from '@/api/client'
 const pets = ref<any[]>([])
 const events = ref<any[]>([])
 const selectedPetId = ref<number | null>(null)
+const editingPetId = ref<number | null>(null)
 const name = ref('')
 const breed = ref('')
 const birthday = ref('')
@@ -161,27 +170,35 @@ function clearPhoto() {
   selectedSize.value = 0
 }
 
-async function createProfile() {
+async function saveProfile() {
   if (!name.value.trim() || savingProfile.value) {
     uni.showToast({ title: '先写宠物名字', icon: 'none' })
     return
   }
   savingProfile.value = true
   try {
-    const created = await request<{ id: number }>('/modules/pet/profiles', {
-      method: 'POST',
-      data: {
-        name: name.value.trim(),
-        breed: breed.value.trim(),
-        birthday: birthday.value || null
-      }
-    })
-    selectedPetId.value = created.id
-    name.value = ''
-    breed.value = ''
-    birthday.value = ''
+    const wasEditing = Boolean(editingPetId.value)
+    const payload = {
+      name: name.value.trim(),
+      breed: breed.value.trim(),
+      birthday: birthday.value || null
+    }
+    if (editingPetId.value) {
+      await request(`/modules/pet/profiles/${editingPetId.value}`, {
+        method: 'PUT',
+        data: payload
+      })
+      selectedPetId.value = editingPetId.value
+    } else {
+      const created = await request<{ id: number }>('/modules/pet/profiles', {
+        method: 'POST',
+        data: payload
+      })
+      selectedPetId.value = created.id
+    }
+    resetProfileForm()
     profileGlow.value = true
-    uni.showToast({ title: '宠物档案已保存', icon: 'none' })
+    uni.showToast({ title: wasEditing ? '宠物档案已更新' : '宠物档案已保存', icon: 'none' })
     setTimeout(() => {
       profileGlow.value = false
     }, 650)
@@ -189,6 +206,37 @@ async function createProfile() {
   } finally {
     savingProfile.value = false
   }
+}
+
+function editProfile(pet: any) {
+  editingPetId.value = pet.id
+  name.value = pet.name || ''
+  breed.value = pet.breed || ''
+  birthday.value = normalizeDate(pet.birthday)
+}
+
+function resetProfileForm() {
+  editingPetId.value = null
+  name.value = ''
+  breed.value = ''
+  birthday.value = ''
+}
+
+function removeProfile(pet: any) {
+  uni.showModal({
+    title: '删除宠物档案',
+    content: `确认删除“${pet.name}”和它的动态吗？`,
+    confirmText: '删除',
+    confirmColor: '#9E4D43',
+    success: async result => {
+      if (!result.confirm) return
+      await request(`/modules/pet/profiles/${pet.id}`, { method: 'DELETE' })
+      if (selectedPetId.value === pet.id) selectedPetId.value = null
+      if (editingPetId.value === pet.id) resetProfileForm()
+      uni.showToast({ title: '已删除', icon: 'none' })
+      await load()
+    }
+  })
 }
 
 async function createEvent() {
@@ -240,6 +288,21 @@ function eventImage(event: any) {
   return event.local_url || event.localUrl || event.object_key || ''
 }
 
+function removeEvent(event: any) {
+  uni.showModal({
+    title: '删除宠物动态',
+    content: '确认删除这条宠物动态吗？',
+    confirmText: '删除',
+    confirmColor: '#9E4D43',
+    success: async result => {
+      if (!result.confirm) return
+      await request(`/modules/pet/events/${event.id}`, { method: 'DELETE' })
+      uni.showToast({ title: '已删除', icon: 'none' })
+      await load()
+    }
+  })
+}
+
 function inferMimeType(name: string) {
   const lower = name.toLowerCase()
   if (lower.endsWith('.png')) return 'image/png'
@@ -253,6 +316,10 @@ function formatTime(value?: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function normalizeDate(value?: string) {
+  return value?.includes('T') ? value.slice(0, 10) : value || ''
 }
 </script>
 
@@ -371,17 +438,26 @@ input,
   font-weight: 700;
 }
 
-.select-mark {
+.select-mark,
+.action-link {
   color: var(--color-accent);
   font-size: 24rpx;
   font-weight: 700;
 }
 
 .quick-types,
-.photo-actions {
+.photo-actions,
+.pet-actions,
+.event-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 12rpx;
+}
+
+.pet-actions {
+  color: var(--color-accent);
+  font-size: 24rpx;
+  font-weight: 700;
 }
 
 .type-pill {
@@ -443,5 +519,10 @@ input,
   color: var(--color-text);
   font-size: 28rpx;
   line-height: 1.6;
+}
+
+.event-meta {
+  align-items: center;
+  justify-content: space-between;
 }
 </style>

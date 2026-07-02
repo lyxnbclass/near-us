@@ -40,7 +40,10 @@
         </view>
       </view>
 
-      <view class="section-title">共同愿望</view>
+      <view class="section-head">
+        <text>共同愿望</text>
+        <text class="count">{{ completedWishes }}/{{ wishes.length }} 已完成</text>
+      </view>
       <view class="card glass-card composer" :class="{ 'tap-glow': wishGlow }">
         <input class="input" v-model="wishTitle" placeholder="想一起做什么？" />
         <input class="input" v-model="wishNote" placeholder="补充一句，可选" />
@@ -48,13 +51,33 @@
       </view>
       <view class="stack">
         <view v-for="wish in wishes" :key="wish.id" class="card glass-card wish-row" :class="{ done: wish.completed }">
-          <view>
+          <view v-if="editingWishId !== wish.id" class="wish-main">
             <text class="block-title">{{ wish.title }}</text>
             <text class="muted">{{ wish.note || '等一个刚刚好的时候' }}</text>
+            <view class="wish-meta">
+              <text>{{ wish.nickname || '我们' }} 创建</text>
+              <text v-if="wish.completed_at">完成于 {{ formatTime(wish.completed_at) }}</text>
+            </view>
+            <view class="wish-actions">
+              <text @click="startEditWish(wish)">编辑</text>
+              <text @click="toggleWish(wish)">{{ wish.completed ? '恢复' : '完成' }}</text>
+              <text class="delete-link" @click="removeWish(wish)">删除</text>
+            </view>
           </view>
-          <view class="complete-button" @click="completeWish(wish)">
-            {{ wish.completed ? '已完成' : '完成' }}
+          <view v-else class="wish-editor" :class="{ 'tap-glow': wishEditGlow }">
+            <input class="input" v-model="editWishTitle" placeholder="愿望标题" />
+            <input class="input" v-model="editWishNote" placeholder="补充一句，可选" />
+            <view class="editor-actions">
+              <view class="ghost-button" @click="cancelEditWish">取消</view>
+              <view class="button" :class="{ disabled: !editWishTitle.trim() || editingWish }" @click="saveWish(wish)">
+                {{ editingWish ? '保存中' : '保存' }}
+              </view>
+            </view>
           </view>
+        </view>
+        <view v-if="!wishes.length" class="card glass-card empty">
+          <text>还没有共同愿望。</text>
+          <text class="muted">写下一件想一起完成的小事吧。</text>
         </view>
       </view>
     </view>
@@ -62,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { request } from '@/api/client'
 
@@ -80,6 +103,13 @@ const wishes = ref<any[]>([])
 const wishTitle = ref('')
 const wishNote = ref('')
 const wishGlow = ref(false)
+const editingWishId = ref<number | null>(null)
+const editWishTitle = ref('')
+const editWishNote = ref('')
+const editingWish = ref(false)
+const wishEditGlow = ref(false)
+
+const completedWishes = computed(() => wishes.value.filter(item => item.completed).length)
 
 onShow(load)
 
@@ -156,6 +186,73 @@ async function completeWish(wish: any) {
   uni.showToast({ title: '一起完成了一件事', icon: 'none' })
   await load()
 }
+
+async function toggleWish(wish: any) {
+  if (wish.completed) {
+    await request(`/interactions/wishes/${wish.id}/reopen`, { method: 'POST' })
+    uni.showToast({ title: '已放回愿望清单', icon: 'none' })
+  } else {
+    await request(`/interactions/wishes/${wish.id}/complete`, { method: 'POST' })
+    uni.showToast({ title: '一起完成了一件事', icon: 'none' })
+  }
+  await load()
+}
+
+function startEditWish(wish: any) {
+  editingWishId.value = wish.id
+  editWishTitle.value = wish.title || ''
+  editWishNote.value = wish.note || ''
+}
+
+function cancelEditWish() {
+  editingWishId.value = null
+  editWishTitle.value = ''
+  editWishNote.value = ''
+}
+
+async function saveWish(wish: any) {
+  if (!editWishTitle.value.trim() || editingWish.value) {
+    uni.showToast({ title: '愿望标题不能为空', icon: 'none' })
+    return
+  }
+  editingWish.value = true
+  try {
+    await request(`/interactions/wishes/${wish.id}`, {
+      method: 'PUT',
+      data: { title: editWishTitle.value.trim(), note: editWishNote.value.trim() }
+    })
+    wishEditGlow.value = true
+    uni.showToast({ title: '愿望已更新', icon: 'none' })
+    setTimeout(() => {
+      wishEditGlow.value = false
+    }, 650)
+    cancelEditWish()
+    await load()
+  } finally {
+    editingWish.value = false
+  }
+}
+
+function removeWish(wish: any) {
+  uni.showModal({
+    title: '删除这个愿望',
+    content: `确认删除“${wish.title}”吗？`,
+    confirmText: '删除',
+    confirmColor: '#9E4D43',
+    success: async result => {
+      if (!result.confirm) return
+      await request(`/interactions/wishes/${wish.id}`, { method: 'DELETE' })
+      if (editingWishId.value === wish.id) cancelEditWish()
+      uni.showToast({ title: '已删除', icon: 'none' })
+      await load()
+    }
+  })
+}
+
+function formatTime(value?: string) {
+  if (!value) return ''
+  return value.replace('T', ' ').slice(0, 16)
+}
 </script>
 
 <style scoped lang="scss">
@@ -181,7 +278,9 @@ async function completeWish(wish: any) {
 }
 
 .card-head,
-.wish-row {
+.section-head,
+.wish-row,
+.editor-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -202,6 +301,12 @@ async function completeWish(wish: any) {
   color: var(--color-rose);
   background: rgba(217, 167, 160, 0.16);
   font-size: 24rpx;
+}
+
+.count {
+  color: var(--color-muted);
+  font-size: 24rpx;
+  font-weight: 600;
 }
 
 .question {
@@ -246,7 +351,62 @@ textarea {
   color: var(--color-rose);
 }
 
+.wish-row {
+  align-items: stretch;
+}
+
+.wish-main,
+.wish-editor,
+.empty {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 12rpx;
+}
+
 .wish-row.done {
   opacity: 0.72;
+}
+
+.wish-meta,
+.wish-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  color: var(--color-muted);
+  font-size: 23rpx;
+}
+
+.wish-actions {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.delete-link {
+  color: #9e4d43;
+}
+
+.editor-actions {
+  align-items: stretch;
+}
+
+.ghost-button,
+.editor-actions .button {
+  flex: 1;
+}
+
+.ghost-button {
+  min-height: 88rpx;
+  border-radius: 22rpx;
+  display: grid;
+  place-items: center;
+  color: var(--color-text);
+  border: 1rpx solid var(--color-line);
+  background: rgba(255, 253, 252, 0.58);
+  font-weight: 700;
+}
+
+.button.disabled {
+  opacity: 0.48;
 }
 </style>

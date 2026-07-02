@@ -35,6 +35,16 @@ public class NotificationController {
         return ApiResponse.ok(Map.of("id", id, "read", true));
     }
 
+    @PostMapping("/read-all")
+    public ApiResponse<Map<String, Object>> readAll(HttpServletRequest request) {
+        long userId = currentUser(request);
+        int updated = jdbc.update("""
+                update notifications set read_at = now()
+                where recipient_user_id = ? and read_at is null
+                """, userId);
+        return ApiResponse.ok(Map.of("updated", updated));
+    }
+
     private long currentUser(HttpServletRequest request) {
         return (Long) request.getAttribute(JwtAuthenticationFilter.USER_ID_ATTR);
     }

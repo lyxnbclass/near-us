@@ -6,6 +6,7 @@ import com.ourspace.common.crypto.CryptoService;
 import com.ourspace.common.security.JwtAuthenticationFilter;
 import com.ourspace.common.tenant.TenantService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -72,9 +73,10 @@ public class FutureLetterController {
     }
 
     @PostMapping
-    public ApiResponse<Map<String, Object>> create(HttpServletRequest request, @RequestBody FutureLetterCreate body) {
+    public ApiResponse<Map<String, Object>> create(HttpServletRequest request, @Valid @RequestBody FutureLetterCreate body) {
         long userId = currentUser(request);
         long coupleId = tenantService.requireCoupleId(userId);
+        validateOpenAt(body.openAt());
         Long recipientId = resolveRecipient(coupleId, userId, body.recipientMode());
         var encrypted = cryptoService.encrypt(body.content());
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -96,8 +98,12 @@ public class FutureLetterController {
     }
 
     private Long resolveRecipient(long coupleId, long userId, String recipientMode) {
-        if ("both".equals(recipientMode)) {
+        String mode = recipientMode == null || recipientMode.isBlank() ? "partner" : recipientMode;
+        if ("both".equals(mode)) {
             return null;
+        }
+        if (!"partner".equals(mode)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_RECIPIENT_MODE");
         }
         var rows = jdbc.queryForList("""
                 select user_id from couple_members
@@ -105,6 +111,15 @@ public class FutureLetterController {
                 limit 1
                 """, Long.class, coupleId, userId);
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private void validateOpenAt(LocalDateTime openAt) {
+        if (openAt == null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "FUTURE_LETTER_OPEN_AT_REQUIRED");
+        }
+        if (openAt.isBefore(LocalDateTime.now())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "FUTURE_LETTER_OPEN_AT_PAST");
+        }
     }
 
     private long currentUser(HttpServletRequest request) {
