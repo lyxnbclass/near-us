@@ -2,6 +2,13 @@
 
 所有业务接口以 `/api` 开头，除登录和健康检查外都需要 `Authorization: Bearer <token>`。
 
+## Health
+
+- `GET /api/health`
+- `GET /api/health/ready`
+
+`GET /api/health` 是轻量存活检查，不访问数据库。`GET /api/health/ready` 会执行数据库连通性检查；数据库不可用时返回 HTTP 503 和 `DEPENDENCY_UNAVAILABLE`。
+
 ## Auth
 
 - `POST /api/auth/mock-login`

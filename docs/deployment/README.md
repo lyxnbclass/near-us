@@ -36,6 +36,13 @@ For production, set this value to the exact deployed H5 domain, for example:
 CORS_ALLOWED_ORIGIN_PATTERNS=https://app.example.com
 ```
 
+## Health checks
+
+Use `GET /api/health` as a lightweight liveness probe. It does not touch the
+database. Use `GET /api/health/ready` as a readiness probe before routing
+traffic; it returns HTTP 503 with `DEPENDENCY_UNAVAILABLE` when the database is
+not reachable.
+
 ## Private media URLs
 
 `GET /api/files/{id}/signed-url` returns a short-lived URL for image previews.

@@ -58,6 +58,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   STATUS_NOT_FOUND: '没有找到这条此刻',
   STATUS_NOT_OWNER: '只能撤回自己发布的此刻',
   VALIDATION_FAILED: '请检查填写内容',
+  DEPENDENCY_UNAVAILABLE: '服务依赖暂时不可用，请稍后再试',
   SERVER_ERROR: '服务暂时开了小差',
   REQUEST_FAILED: '请求失败，请稍后再试'
 }

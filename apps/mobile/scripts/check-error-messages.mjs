@@ -9,7 +9,8 @@ const clientPath = join(mobileRoot, 'src', 'api', 'client.ts')
 const backendCodes = new Set()
 const backendPatterns = [
   /new BusinessException\([^,]+,\s*"([A-Z][A-Z0-9_]+)"/g,
-  /ApiResponse\.fail\("([A-Z][A-Z0-9_]+)"\)/g
+  /ApiResponse\.fail\("([A-Z][A-Z0-9_]+)"\)/g,
+  /new ApiResponse<[^>]*>\(\s*false,[\s\S]*?,\s*"([A-Z][A-Z0-9_]+)"\s*\)/g
 ]
 
 for (const file of walk(serverRoot)) {
