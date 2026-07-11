@@ -7,6 +7,7 @@ import com.ourspace.common.tenant.TenantService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -17,20 +18,37 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/couples")
 public class CoupleController {
+    private static final int DEFAULT_BIND_FAILURE_LIMIT = 5;
+    private static final int DEFAULT_BIND_FAILURE_WINDOW_MINUTES = 15;
+
     private final JdbcTemplate jdbc;
     private final TenantService tenantService;
+    private final boolean trustForwardedHeaders;
+    private final int inviteBindFailureLimit;
+    private final int inviteBindFailureWindowMinutes;
 
-    public CoupleController(JdbcTemplate jdbc, TenantService tenantService) {
+    public CoupleController(JdbcTemplate jdbc,
+                            TenantService tenantService,
+                            @Value("${app.trust-forwarded-headers:false}") boolean trustForwardedHeaders,
+                            @Value("${app.invite-bind-failure-limit:5}") String inviteBindFailureLimit,
+                            @Value("${app.invite-bind-failure-window-minutes:15}") String inviteBindFailureWindowMinutes) {
         this.jdbc = jdbc;
         this.tenantService = tenantService;
+        this.trustForwardedHeaders = trustForwardedHeaders;
+        this.inviteBindFailureLimit = parsePositiveOrDefault(inviteBindFailureLimit, DEFAULT_BIND_FAILURE_LIMIT);
+        this.inviteBindFailureWindowMinutes = parsePositiveOrDefault(
+                inviteBindFailureWindowMinutes,
+                DEFAULT_BIND_FAILURE_WINDOW_MINUTES);
     }
 
     @GetMapping("/me")
@@ -96,18 +114,31 @@ public class CoupleController {
         if (tenantService.activeCoupleId(userId) != null) {
             throw new BusinessException(HttpStatus.CONFLICT, "ALREADY_PAIRED");
         }
+        String normalizedCode = normalizeCode(bindRequest.inviteCode());
+        String codeHash = hash(normalizedCode);
+        String ipHash = requestIpHash(request);
+        cleanupOldBindAttempts();
+        ensureBindAttemptAllowed(userId, ipHash);
         var rows = jdbc.queryForList("""
-                select id from couples
+                select id, invite_expires_at from couples
                 where invite_code_hash = ? and status = 'inviting'
-                  and invite_expires_at > now() and deleted_at is null
+                  and deleted_at is null
                 limit 1
-                """, Long.class, hash(bindRequest.inviteCode()));
+                """, codeHash);
         if (rows.isEmpty()) {
+            recordBindAttempt(userId, ipHash, codeHash, false, "INVITE_NOT_FOUND");
             throw new BusinessException(HttpStatus.NOT_FOUND, "INVITE_NOT_FOUND");
         }
-        long coupleId = rows.get(0);
+        var invite = rows.get(0);
+        long coupleId = ((Number) invite.get("id")).longValue();
+        var inviteExpiresAt = asLocalDateTime(invite.get("invite_expires_at"));
+        if (inviteExpiresAt == null || !inviteExpiresAt.isAfter(LocalDateTime.now())) {
+            recordBindAttempt(userId, ipHash, codeHash, false, "INVITE_EXPIRED");
+            throw new BusinessException(HttpStatus.GONE, "INVITE_EXPIRED");
+        }
         var memberCount = jdbc.queryForObject("select count(*) from couple_members where couple_id = ? and status = 'active'", Integer.class, coupleId);
         if (memberCount == null || memberCount >= 2) {
+            recordBindAttempt(userId, ipHash, codeHash, false, "COUPLE_FULL");
             throw new BusinessException(HttpStatus.CONFLICT, "COUPLE_FULL");
         }
         var selfInvite = jdbc.queryForObject("""
@@ -115,6 +146,7 @@ public class CoupleController {
                 where couple_id = ? and user_id = ? and status = 'active' and left_at is null
                 """, Integer.class, coupleId, userId);
         if (selfInvite != null && selfInvite > 0) {
+            recordBindAttempt(userId, ipHash, codeHash, false, "CANNOT_BIND_OWN_INVITE");
             throw new BusinessException(HttpStatus.CONFLICT, "CANNOT_BIND_OWN_INVITE");
         }
         jdbc.update("insert into couple_members(couple_id, user_id, role) values(?, ?, 'member')", coupleId, userId);
@@ -123,6 +155,7 @@ public class CoupleController {
                 set status = 'active', paired_at = now(), invite_code_hash = null, invite_expires_at = null
                 where id = ?
                 """, coupleId);
+        recordBindAttempt(userId, ipHash, codeHash, true, null);
         return ApiResponse.ok(Map.of("coupleId", coupleId));
     }
 
@@ -215,11 +248,69 @@ public class CoupleController {
 
     private String hash(String code) {
         try {
-            var digest = MessageDigest.getInstance("SHA-256").digest(code.trim().toUpperCase().getBytes(StandardCharsets.UTF_8));
+            var digest = MessageDigest.getInstance("SHA-256").digest(normalizeCode(code).getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         } catch (Exception e) {
             throw new IllegalStateException("HASH_FAILED", e);
         }
+    }
+
+    private String normalizeCode(String code) {
+        return code == null ? "" : code.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private int parsePositiveOrDefault(String value, int fallback) {
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed > 0 ? parsed : fallback;
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private void ensureBindAttemptAllowed(long userId, String ipHash) {
+        LocalDateTime since = LocalDateTime.now().minusMinutes(inviteBindFailureWindowMinutes);
+        Integer userFailures = jdbc.queryForObject("""
+                select count(*) from invite_bind_attempts
+                where user_id = ? and success = false and attempted_at >= ?
+                """, Integer.class, userId, since);
+        Integer ipFailures = ipHash == null ? 0 : jdbc.queryForObject("""
+                select count(*) from invite_bind_attempts
+                where ip_hash = ? and success = false and attempted_at >= ?
+                """, Integer.class, ipHash, since);
+        if ((userFailures != null && userFailures >= inviteBindFailureLimit)
+                || (ipFailures != null && ipFailures >= inviteBindFailureLimit)) {
+            throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "INVITE_ATTEMPT_LIMITED");
+        }
+    }
+
+    private void recordBindAttempt(long userId, String ipHash, String codeHash, boolean success, String failureCode) {
+        jdbc.update("""
+                insert into invite_bind_attempts(user_id, ip_hash, invite_code_hash, success, failure_code)
+                values(?, ?, ?, ?, ?)
+                """, userId, ipHash, codeHash, success, failureCode);
+    }
+
+    private void cleanupOldBindAttempts() {
+        jdbc.update("delete from invite_bind_attempts where attempted_at < ?", LocalDateTime.now().minusDays(1));
+    }
+
+    private LocalDateTime asLocalDateTime(Object value) {
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime;
+        }
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toLocalDateTime();
+        }
+        return null;
+    }
+
+    private String requestIpHash(HttpServletRequest request) {
+        String forwardedFor = trustForwardedHeaders ? request.getHeader("X-Forwarded-For") : null;
+        String ip = forwardedFor == null || forwardedFor.isBlank()
+                ? request.getRemoteAddr()
+                : forwardedFor.split(",")[0].trim();
+        return ip == null || ip.isBlank() ? null : hash(ip);
     }
 
     public record BindRequest(@NotBlank String inviteCode) {

@@ -18,5 +18,8 @@ app:
   media-base-url: ${MEDIA_BASE_URL:}
   media-storage-dir: ${MEDIA_STORAGE_DIR:var/media}
   media-url-ttl-minutes: 15
+  trust-forwarded-headers: ${TRUST_FORWARDED_HEADERS:false}
+  invite-bind-failure-limit: ${INVITE_BIND_FAILURE_LIMIT:5}
+  invite-bind-failure-window-minutes: ${INVITE_BIND_FAILURE_WINDOW_MINUTES:15}
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*,http://192.168.*:*}

@@ -17,7 +17,7 @@
 
 `POST /api/couples/invite` 返回 `inviteCode`、`expiresAt` 和 `coupleId`。邀请码 24 小时有效；如果当前用户已有未绑定的邀请空间，再次调用会刷新同一个邀请的密语和过期时间。
 
-`POST /api/couples/bind` 请求体为 `{ "inviteCode": "NEAR2026" }`。接口会校验邀请码存在、未过期、空间未满，并禁止绑定自己创建的邀请码。
+`POST /api/couples/bind` 请求体为 `{ "inviteCode": "NEAR2026" }`。接口会校验邀请码存在、未过期、空间未满，并禁止绑定自己创建的邀请码。为降低爆破风险，同一用户或同一 IP 15 分钟内最多允许 5 次失败绑定尝试；超过后返回 `INVITE_ATTEMPT_LIMITED`，稍后可重试。
 
 ## Core
 

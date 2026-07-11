@@ -4,7 +4,10 @@
   "private": true,
   "scripts": {
     "dev:h5": "uni --host 127.0.0.1 --port 5188",
+    "check": "npm run check:env && npm run check:errors && npm run check:migrations && npm run typecheck",
+    "check:env": "node scripts/check-env-example.mjs",
     "check:errors": "node scripts/check-error-messages.mjs",
+    "check:migrations": "node scripts/check-migrations.mjs",
     "typecheck": "tsc --noEmit",
     "build:h5": "uni build",
     "dev:mp-weixin": "uni -p mp-weixin",

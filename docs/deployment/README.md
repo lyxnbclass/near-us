@@ -58,3 +58,32 @@ MEDIA_BASE_URL=https://media.example.com
 
 The application permits `/private-media/**` so signed image URLs can be loaded
 by browser and mini-program image components without an `Authorization` header.
+
+## Invite code protection
+
+Pairing invite codes are stored as SHA-256 hashes and expire after 24 hours.
+Failed bind attempts are recorded in `invite_bind_attempts` with the user id,
+invite-code hash, and IP hash. The API rejects additional attempts after 5
+failures in 15 minutes by the same user or IP with `INVITE_ATTEMPT_LIMITED`.
+Routine bind traffic prunes attempts older than one day, and high-traffic
+deployments can also prune this table with scheduled database maintenance.
+The default threshold can be tuned with:
+
+```env
+INVITE_BIND_FAILURE_LIMIT=5
+INVITE_BIND_FAILURE_WINDOW_MINUTES=15
+```
+
+Both values must be positive integers. Invalid or non-positive values fall back
+to the defaults above.
+
+By default the API uses the direct remote address and ignores
+`X-Forwarded-For`. When the API runs behind trusted reverse proxy
+infrastructure, set:
+
+```env
+TRUST_FORWARDED_HEADERS=true
+```
+
+Only enable this when the proxy overwrites `X-Forwarded-For` and strips
+client-supplied values before forwarding requests to the API.

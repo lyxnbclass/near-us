@@ -1,10 +1,13 @@
 const DEFAULT_BASE_URL = 'http://localhost:8080/api'
 const BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL || DEFAULT_BASE_URL)
+const USE_DEMO_FALLBACK = parseBooleanEnv(import.meta.env.VITE_USE_DEMO_FALLBACK, true)
 const DEMO_STORAGE_KEY = 'ourspace-demo-state'
 const LOVE_START_DATE = '2026-02-23'
 const NEXT_MEETING_DATE = '2026-07-03'
 const PET_NAME = '芋圆'
 const PET_BIRTHDAY = '2026-01-17'
+const DEMO_INVITE_FAILURE_LIMIT = 5
+const DEMO_INVITE_FAILURE_WINDOW_MS = 15 * 60 * 1000
 
 type MockResult = { handled: true; data: unknown } | { handled: false }
 type ApiBody<T> = { success: boolean; data: T; error?: string }
@@ -28,6 +31,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   ALREADY_PAIRED: '你已经完成配对',
   CANNOT_BIND_OWN_INVITE: '不能绑定自己创建的配对密语',
   COUPLE_FULL: '这个配对空间已经满员',
+  INVITE_ATTEMPT_LIMITED: '密语尝试太多了，先休息 15 分钟再试',
   INVITE_NOT_FOUND: '没有找到这串配对密语',
   INVITE_EXPIRED: '这串配对密语已经过期',
   ONLY_REQUESTER_CAN_CANCEL: '只有申请人可以撤销解绑',
@@ -157,6 +161,9 @@ export async function request<T>(path: string, options: ApiRequestOptions = {}):
     if (error instanceof ApiRequestError && !error.shouldUseMock) {
       throw error
     }
+    if (!USE_DEMO_FALLBACK) {
+      throw error
+    }
     const mocked = mockRequest(path, options)
     if (mocked.handled) {
       return mocked.data as T
@@ -195,6 +202,11 @@ function parseUploadResponse<T>(response: UniApp.UploadFileSuccessCallbackResult
 
 function normalizeBaseUrl(value: string) {
   return String(value || DEFAULT_BASE_URL).replace(/\/+$/, '')
+}
+
+function parseBooleanEnv(value: string | undefined, fallback: boolean) {
+  if (value == null || value === '') return fallback
+  return !['0', 'false', 'no', 'off'].includes(value.trim().toLowerCase())
 }
 
 function normalizeMediaUrl(url: string) {
@@ -310,12 +322,19 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
     const body = options.data as any
     const submittedCode = String(body?.inviteCode || '').trim().toUpperCase()
     const expectedCode = state.inviteCode || 'NEAR2026'
+    const recentFailures = recentInviteFailures(state)
+    if (recentFailures.length >= DEMO_INVITE_FAILURE_LIMIT) {
+      throw new Error('INVITE_ATTEMPT_LIMITED')
+    }
     if (!submittedCode || submittedCode !== expectedCode) {
+      recordInviteAttempt(state, submittedCode, false, 'INVITE_NOT_FOUND')
       throw new Error('INVITE_NOT_FOUND')
     }
     if (state.inviteExpiresAt && new Date(state.inviteExpiresAt).getTime() <= Date.now()) {
+      recordInviteAttempt(state, submittedCode, false, 'INVITE_EXPIRED')
       throw new Error('INVITE_EXPIRED')
     }
+    recordInviteAttempt(state, submittedCode, true)
     state.paired = true
     state.pairedAt = LOVE_START_DATE
     state.coupleStatus = 'active'
@@ -1086,6 +1105,25 @@ function reactionList(value: string) {
   return String(value).split(',').filter(Boolean)
 }
 
+function recentInviteFailures(state: any) {
+  const since = Date.now() - DEMO_INVITE_FAILURE_WINDOW_MS
+  return (state.inviteBindAttempts || []).filter((item: any) => {
+    return !item.success && new Date(item.at).getTime() >= since
+  })
+}
+
+function recordInviteAttempt(state: any, code: string, success: boolean, failureCode = '') {
+  state.inviteBindAttempts = (state.inviteBindAttempts || [])
+    .filter((item: any) => new Date(item.at).getTime() >= Date.now() - 24 * 60 * 60 * 1000)
+  state.inviteBindAttempts.push({
+    code,
+    success,
+    failureCode,
+    at: new Date().toISOString()
+  })
+  saveDemoState(state)
+}
+
 function getDemoState() {
   const stored = uni.getStorageSync(DEMO_STORAGE_KEY)
   if (stored) {
@@ -1181,6 +1219,7 @@ function defaultDemoState() {
     paired: false,
     inviteCode: '',
     inviteExpiresAt: '',
+    inviteBindAttempts: [],
     petEnabled: false,
     dailyTopic: {
       topic: {
