@@ -64,6 +64,8 @@
 - `POST /api/notifications/{id}/read`
 - `POST /api/notifications/read-all`
 
+`POST /api/notifications/{id}/read` 只允许标记当前用户自己的通知；通知不存在或不属于当前用户时返回 `NOTIFICATION_NOT_FOUND`。
+
 ## Modules
 
 - `GET /api/modules`

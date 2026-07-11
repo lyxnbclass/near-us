@@ -1,8 +1,10 @@
 package com.ourspace.notification;
 
 import com.ourspace.common.ApiResponse;
+import com.ourspace.common.BusinessException;
 import com.ourspace.common.security.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,7 +33,10 @@ public class NotificationController {
     @PostMapping("/{id}/read")
     public ApiResponse<Map<String, Object>> read(HttpServletRequest request, @PathVariable long id) {
         long userId = currentUser(request);
-        jdbc.update("update notifications set read_at = now() where id = ? and recipient_user_id = ?", id, userId);
+        int updated = jdbc.update("update notifications set read_at = now() where id = ? and recipient_user_id = ?", id, userId);
+        if (updated == 0) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "NOTIFICATION_NOT_FOUND");
+        }
         return ApiResponse.ok(Map.of("id", id, "read", true));
     }
 

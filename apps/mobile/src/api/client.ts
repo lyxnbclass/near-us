@@ -57,6 +57,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   INVALID_RECIPIENT_MODE: '请选择正确的收信方式',
   STATUS_NOT_FOUND: '没有找到这条此刻',
   STATUS_NOT_OWNER: '只能撤回自己发布的此刻',
+  NOTIFICATION_NOT_FOUND: '没有找到这条通知',
   VALIDATION_FAILED: '请检查填写内容',
   DEPENDENCY_UNAVAILABLE: '服务依赖暂时不可用，请稍后再试',
   SERVER_ERROR: '服务暂时开了小差',
@@ -1055,6 +1056,8 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path.startsWith('/notifications/') && path.endsWith('/read') && method === 'POST') {
     const id = Number(path.split('/')[2])
+    const exists = (state.notifications || []).some((item: any) => item.id === id)
+    if (!exists) throw new Error('NOTIFICATION_NOT_FOUND')
     state.notifications = (state.notifications || []).map((item: any) => item.id === id
       ? { ...item, read_at: new Date().toISOString() }
       : item)
