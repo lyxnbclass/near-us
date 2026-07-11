@@ -19,6 +19,22 @@
         <text class="muted">导出时间：{{ exportPreview.exportedAt }}</text>
         <view class="metric-grid">
           <view class="metric">
+            <text class="metric-num">{{ exportPreview.albums?.length || 0 }}</text>
+            <text class="muted">相册记录</text>
+          </view>
+          <view class="metric">
+            <text class="metric-num">{{ exportPreview.statuses?.length || 0 }}</text>
+            <text class="muted">此刻动态</text>
+          </view>
+          <view class="metric">
+            <text class="metric-num">{{ exportPreview.diaries?.length || 0 }}</text>
+            <text class="muted">日记索引</text>
+          </view>
+          <view class="metric">
+            <text class="metric-num">{{ exportPreview.anniversaries?.length || 0 }}</text>
+            <text class="muted">纪念日</text>
+          </view>
+          <view class="metric">
             <text class="metric-num">{{ exportPreview.affectionCards?.length || 0 }}</text>
             <text class="muted">心意卡片</text>
           </view>
@@ -30,6 +46,10 @@
             <text class="metric-num">{{ exportPreview.futureLetters?.length || 0 }}</text>
             <text class="muted">未来信</text>
           </view>
+        </view>
+        <view class="export-actions">
+          <view class="ghost-button" @click="copyExportJson">复制 JSON</view>
+          <view class="button" @click="exportData">重新生成</view>
         </view>
       </view>
 
@@ -64,17 +84,30 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { request } from '@/api/client'
+import { getErrorMessage, request } from '@/api/client'
 
 const exportPreview = ref<any>(null)
 const requests = ref<any[]>([])
 const pendingDeletion = computed(() => requests.value.some(item => item.request_type === 'account_deletion' && item.status === 'pending'))
+const exportJson = computed(() => exportPreview.value ? JSON.stringify(exportPreview.value, null, 2) : '')
 
 onShow(loadRequests)
 
 async function exportData() {
-  exportPreview.value = await request('/privacy/export')
-  uni.showToast({ title: '导出预览已生成', icon: 'none' })
+  try {
+    exportPreview.value = await request('/privacy/export')
+    uni.showToast({ title: '导出预览已生成', icon: 'none' })
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时生成不了导出预览'), icon: 'none' })
+  }
+}
+
+function copyExportJson() {
+  if (!exportJson.value) return
+  uni.setClipboardData({
+    data: exportJson.value,
+    success: () => uni.showToast({ title: 'JSON 已复制', icon: 'none' })
+  })
 }
 
 async function requestDeletion() {
@@ -87,9 +120,13 @@ async function requestDeletion() {
     content: '提交后会进入 7 天冷静期。',
     success: async (res) => {
       if (!res.confirm) return
-      await request('/privacy/deletion-request', { method: 'POST' })
-      uni.showToast({ title: '已提交注销申请', icon: 'none' })
-      await loadRequests()
+      try {
+        await request('/privacy/deletion-request', { method: 'POST' })
+        uni.showToast({ title: '已提交注销申请', icon: 'none' })
+        await loadRequests()
+      } catch (error: any) {
+        uni.showToast({ title: getErrorMessage(error, '暂时不能提交注销申请'), icon: 'none' })
+      }
     }
   })
 }
@@ -101,15 +138,23 @@ async function cancelDeletion() {
     confirmText: '撤销',
     success: async (res) => {
       if (!res.confirm) return
-      await request('/privacy/deletion-request/cancel', { method: 'POST' })
-      uni.showToast({ title: '已撤销注销申请', icon: 'none' })
-      await loadRequests()
+      try {
+        await request('/privacy/deletion-request/cancel', { method: 'POST' })
+        uni.showToast({ title: '已撤销注销申请', icon: 'none' })
+        await loadRequests()
+      } catch (error: any) {
+        uni.showToast({ title: getErrorMessage(error, '暂时不能撤销注销申请'), icon: 'none' })
+      }
     }
   })
 }
 
 async function loadRequests() {
-  requests.value = await request('/privacy/requests')
+  try {
+    requests.value = await request('/privacy/requests')
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时加载不了隐私请求'), icon: 'none' })
+  }
 }
 
 function formatTime(value: string) {
@@ -170,6 +215,12 @@ function statusText(status: string) {
   color: var(--color-rose);
   font-size: 40rpx;
   font-weight: 600;
+}
+
+.export-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
 }
 
 .danger {

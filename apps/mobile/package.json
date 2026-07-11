@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev:h5": "uni --host 127.0.0.1 --port 5188",
+    "check:errors": "node scripts/check-error-messages.mjs",
+    "typecheck": "tsc --noEmit",
     "build:h5": "uni build",
     "dev:mp-weixin": "uni -p mp-weixin",
     "build:mp-weixin": "uni build -p mp-weixin"

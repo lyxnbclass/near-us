@@ -117,14 +117,14 @@ public class PetController {
                 "select count(*) from pet_profiles where id = ? and couple_id = ? and deleted_at is null",
                 Integer.class, body.petId(), coupleId);
         if (petCount == null || petCount == 0) {
-            return ApiResponse.fail("PET_NOT_FOUND");
+            throw new BusinessException(HttpStatus.NOT_FOUND, "PET_NOT_FOUND");
         }
         if (body.fileId() != null) {
             var fileCount = jdbc.queryForObject(
                     "select count(*) from files where id = ? and couple_id = ? and deleted_at is null",
                     Integer.class, body.fileId(), coupleId);
             if (fileCount == null || fileCount == 0) {
-                return ApiResponse.fail("FILE_NOT_FOUND");
+                throw new BusinessException(HttpStatus.NOT_FOUND, "FILE_NOT_FOUND");
             }
         }
         KeyHolder keyHolder = new GeneratedKeyHolder();

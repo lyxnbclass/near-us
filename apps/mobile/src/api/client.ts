@@ -1,11 +1,126 @@
-const BASE_URL = 'http://localhost:8080/api'
+const DEFAULT_BASE_URL = 'http://localhost:8080/api'
+const BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL || DEFAULT_BASE_URL)
 const DEMO_STORAGE_KEY = 'ourspace-demo-state'
 const LOVE_START_DATE = '2026-02-23'
 const NEXT_MEETING_DATE = '2026-07-03'
 const PET_NAME = '芋圆'
 const PET_BIRTHDAY = '2026-01-17'
 
-type MockResult<T> = { handled: true; data: T } | { handled: false }
+type MockResult = { handled: true; data: unknown } | { handled: false }
+type ApiBody<T> = { success: boolean; data: T; error?: string }
+type ApiRequestOptions = Omit<UniApp.RequestOptions, 'url'> & { url?: string }
+
+class ApiRequestError extends Error {
+  readonly statusCode?: number
+  readonly shouldUseMock: boolean
+
+  constructor(message: string, options: { statusCode?: number; shouldUseMock?: boolean } = {}) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.statusCode = options.statusCode
+    this.shouldUseMock = Boolean(options.shouldUseMock)
+  }
+}
+
+const ERROR_MESSAGES: Record<string, string> = {
+  PAIR_REQUIRED: '请先完成配对',
+  ALREADY_HAS_COUPLE_OR_INVITE: '你已经有配对空间或待绑定邀请',
+  ALREADY_PAIRED: '你已经完成配对',
+  CANNOT_BIND_OWN_INVITE: '不能绑定自己创建的配对密语',
+  COUPLE_FULL: '这个配对空间已经满员',
+  INVITE_NOT_FOUND: '没有找到这串配对密语',
+  INVITE_EXPIRED: '这串配对密语已经过期',
+  ONLY_REQUESTER_CAN_CANCEL: '只有申请人可以撤销解绑',
+  UNBIND_NOT_PENDING: '当前没有待确认的解绑申请',
+  MODULE_DISABLED: '这个模块还没有开启',
+  MODULE_UNSUPPORTED: '暂时不支持这个模块',
+  PET_NOT_FOUND: '没有找到这只宠物',
+  PET_EVENT_NOT_FOUND: '没有找到这条宠物动态',
+  FILE_NOT_FOUND: '没有找到这个文件',
+  FILE_EMPTY: '请选择一个有效文件',
+  FILE_INVALID_NAME: '文件名包含暂不支持的字符',
+  ALBUM_NOT_FOUND: '没有找到这条相册记录',
+  ANNIVERSARY_NOT_FOUND: '没有找到这个纪念日',
+  DIARY_NOT_FOUND: '没有找到这篇日记',
+  DIARY_NOT_OWNER: '只能编辑自己的日记',
+  DIARY_PRIVATE: '这篇日记暂时不能评论',
+  INVALID_DIARY_VISIBILITY: '请选择正确的日记可见范围',
+  WISH_NOT_FOUND: '没有找到这个愿望',
+  FUTURE_LETTER_NOT_FOUND: '没有找到这封未来信',
+  FUTURE_LETTER_LOCKED: '还没到打开的时候',
+  FUTURE_LETTER_OPEN_AT_PAST: '请选择未来的打开时间',
+  FUTURE_LETTER_OPEN_AT_REQUIRED: '请选择打开时间',
+  INVALID_RECIPIENT_MODE: '请选择正确的收信方式',
+  STATUS_NOT_FOUND: '没有找到这条此刻',
+  STATUS_NOT_OWNER: '只能撤回自己发布的此刻',
+  VALIDATION_FAILED: '请检查填写内容',
+  SERVER_ERROR: '服务暂时开了小差',
+  REQUEST_FAILED: '请求失败，请稍后再试'
+}
+
+export function getErrorCode(error: unknown) {
+  return error instanceof Error ? error.message : String(error || '')
+}
+
+export function getErrorMessage(error: unknown, fallback = '操作失败，请稍后再试') {
+  const code = getErrorCode(error)
+  if (!code) return fallback
+  if (ERROR_MESSAGES[code]) return ERROR_MESSAGES[code]
+  if (code.startsWith('HTTP_')) return '服务连接异常，请稍后再试'
+  return code
+}
+
+export function toDisplayMediaUrl(item: any) {
+  const url = item?.local_url || item?.localUrl || item?.signed_url || item?.signedUrl || ''
+  if (url) return normalizeMediaUrl(url)
+  const objectKey = item?.object_key || item?.objectKey || ''
+  return isDisplayableMediaUrl(objectKey) ? normalizeMediaUrl(objectKey) : ''
+}
+
+export async function enrichSignedFileUrls<T extends Record<string, any>>(items: T[]) {
+  return Promise.all(items.map(async item => {
+    if (toDisplayMediaUrl(item)) return item
+    const fileId = item.file_id || item.fileId
+    if (!fileId) return item
+    try {
+      const signed = await request<{ url: string }>(`/files/${fileId}/signed-url`)
+      return {
+        ...item,
+        local_url: normalizeMediaUrl(signed.url)
+      }
+    } catch {
+      return item
+    }
+  }))
+}
+
+export async function uploadMediaFile(filePath: string, options: { name?: string; size?: number; mimeType?: string } = {}) {
+  const token = getToken()
+  try {
+    const response = await uni.uploadFile({
+      url: `${BASE_URL}/files/upload`,
+      filePath,
+      name: 'file',
+      formData: {
+        originalName: options.name || filePath
+      },
+      header: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    })
+    return parseUploadResponse<{ id: number; objectKey?: string; url?: string }>(response)
+  } catch {
+    return request<{ id: number }>('/files', {
+      method: 'POST',
+      data: {
+        objectKey: filePath,
+        originalName: options.name || filePath,
+        mimeType: options.mimeType || inferMimeType(options.name || filePath),
+        sizeBytes: options.size || 0
+      }
+    })
+  }
+}
 
 export function getToken() {
   return uni.getStorageSync('token') as string | undefined
@@ -23,7 +138,7 @@ export function resetDemoState() {
   uni.removeStorageSync(DEMO_STORAGE_KEY)
 }
 
-export async function request<T>(path: string, options: UniApp.RequestOptions = {}): Promise<T> {
+export async function request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const token = getToken()
   try {
     const response = await uni.request({
@@ -37,21 +152,77 @@ export async function request<T>(path: string, options: UniApp.RequestOptions = 
         ...(options.header || {})
       }
     })
-    const body = response.data as { success: boolean; data: T; error?: string }
-    if (!body?.success) {
-      throw new Error(body?.error || 'REQUEST_FAILED')
-    }
-    return body.data
+    return parseResponse<T>(response)
   } catch (error) {
-    const mocked = mockRequest<T>(path, options)
+    if (error instanceof ApiRequestError && !error.shouldUseMock) {
+      throw error
+    }
+    const mocked = mockRequest(path, options)
     if (mocked.handled) {
-      return mocked.data
+      return mocked.data as T
     }
     throw error
   }
 }
 
-function mockRequest<T>(path: string, options: UniApp.RequestOptions): MockResult<T> {
+function parseResponse<T>(response: UniApp.RequestSuccessCallbackResult): T {
+  const statusCode = Number(response.statusCode || 0)
+  const body = response.data as ApiBody<T> | undefined
+  const message = body?.error || `HTTP_${statusCode || 'REQUEST_FAILED'}`
+
+  if (!statusCode) {
+    throw new ApiRequestError('REQUEST_FAILED', { shouldUseMock: true })
+  }
+
+  if (statusCode < 200 || statusCode >= 300) {
+    throw new ApiRequestError(message, { statusCode })
+  }
+
+  if (!body?.success) {
+    throw new ApiRequestError(message || 'REQUEST_FAILED', { statusCode })
+  }
+
+  return body.data
+}
+
+function parseUploadResponse<T>(response: UniApp.UploadFileSuccessCallbackResult): T {
+  const data = typeof response.data === 'string' ? JSON.parse(response.data || '{}') : response.data
+  return parseResponse<T>({
+    statusCode: response.statusCode,
+    data
+  } as UniApp.RequestSuccessCallbackResult)
+}
+
+function normalizeBaseUrl(value: string) {
+  return String(value || DEFAULT_BASE_URL).replace(/\/+$/, '')
+}
+
+function normalizeMediaUrl(url: string) {
+  if (!url) return ''
+  if (url.startsWith('/')) {
+    try {
+      return `${new URL(BASE_URL).origin}${url}`
+    } catch {
+      return url
+    }
+  }
+  if (isDisplayableMediaUrl(url)) return url
+  return ''
+}
+
+function isDisplayableMediaUrl(url: string) {
+  return /^(https?:|data:|blob:|file:|wxfile:|\/)/i.test(url)
+}
+
+function inferMimeType(name: string) {
+  const lower = name.toLowerCase()
+  if (lower.endsWith('.png')) return 'image/png'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  return 'image/jpeg'
+}
+
+function mockRequest(path: string, options: ApiRequestOptions): MockResult {
   const method = (options.method || 'GET').toUpperCase()
   const state = getDemoState()
 
@@ -1011,6 +1182,16 @@ function defaultDemoState() {
     inviteCode: '',
     inviteExpiresAt: '',
     petEnabled: false,
+    dailyTopic: {
+      topic: {
+        id: 1,
+        question: '如果今晚能把一小时留给对方，你想怎么用？',
+        topic_date: now.toISOString().slice(0, 10)
+      },
+      answeredByMe: false,
+      unlocked: false,
+      answers: []
+    },
     affectionCards: [
       {
         id: 1,

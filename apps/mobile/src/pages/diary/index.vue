@@ -126,7 +126,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { request } from '@/api/client'
+import { getErrorMessage, request } from '@/api/client'
 
 const title = ref('')
 const content = ref('')
@@ -157,7 +157,11 @@ const diaryTimeText = computed(() => {
 onShow(load)
 
 async function load() {
-  diaries.value = await request('/diaries')
+  try {
+    diaries.value = await request('/diaries')
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时加载不了日记'), icon: 'none' })
+  }
 }
 
 async function create() {
@@ -184,17 +188,23 @@ async function create() {
       savedGlow.value = false
     }, 650)
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '日记暂时没有保存'), icon: 'none' })
   } finally {
     saving.value = false
   }
 }
 
 async function open(id: number) {
-  currentDiary.value = await request<any>(`/diaries/${id}`)
-  comments.value = currentDiary.value?.comments || []
-  editing.value = false
-  if (currentDiary.value?.visibility === 'shared' && !comments.value.length) {
-    comments.value = await request<any[]>(`/diaries/${id}/comments`)
+  try {
+    currentDiary.value = await request<any>(`/diaries/${id}`)
+    comments.value = currentDiary.value?.comments || []
+    editing.value = false
+    if (currentDiary.value?.visibility === 'shared' && !comments.value.length) {
+      comments.value = await request<any[]>(`/diaries/${id}/comments`)
+    }
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时打不开这篇日记'), icon: 'none' })
   }
 }
 
@@ -242,6 +252,8 @@ async function saveEdit() {
     }, 650)
     await open(currentDiary.value.id)
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '日记暂时没有更新'), icon: 'none' })
   } finally {
     updating.value = false
   }
@@ -256,10 +268,14 @@ function removeDiary() {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm || !currentDiary.value) return
-      await request(`/diaries/${currentDiary.value.id}`, { method: 'DELETE' })
-      uni.showToast({ title: '已删除', icon: 'none' })
-      closeDetail()
-      await load()
+      try {
+        await request(`/diaries/${currentDiary.value.id}`, { method: 'DELETE' })
+        uni.showToast({ title: '已删除', icon: 'none' })
+        closeDetail()
+        await load()
+      } catch (error: any) {
+        uni.showToast({ title: getErrorMessage(error, '暂时删除不了这篇日记'), icon: 'none' })
+      }
     }
   })
 }
@@ -281,6 +297,8 @@ async function sendComment() {
     setTimeout(() => {
       commentGlow.value = false
     }, 650)
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '回应暂时没有留下'), icon: 'none' })
   } finally {
     commenting.value = false
   }

@@ -1,9 +1,11 @@
 package com.ourspace.module;
 
 import com.ourspace.common.ApiResponse;
+import com.ourspace.common.BusinessException;
 import com.ourspace.common.security.JwtAuthenticationFilter;
 import com.ourspace.common.tenant.TenantService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,7 +36,7 @@ public class ModuleController {
     @PutMapping("/{moduleKey}")
     public ApiResponse<Map<String, Object>> set(HttpServletRequest request, @PathVariable String moduleKey, @RequestBody ModuleToggle toggle) {
         if (!SUPPORTED.contains(moduleKey)) {
-            return ApiResponse.fail("MODULE_UNSUPPORTED");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "MODULE_UNSUPPORTED");
         }
         long coupleId = tenantService.requireCoupleId(currentUser(request));
         jdbc.update("""

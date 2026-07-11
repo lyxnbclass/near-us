@@ -78,7 +78,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { request } from '@/api/client'
+import { enrichSignedFileUrls, getErrorMessage, request, toDisplayMediaUrl } from '@/api/client'
 import { ensurePairedSpace } from '@/utils/spaceGuard'
 
 const memory = ref<any>(null)
@@ -103,7 +103,18 @@ onShow(load)
 
 async function load() {
   if (!(await ensurePairedSpace())) return
-  memory.value = await request('/memories/today')
+  try {
+    const data = await request<any>('/memories/today')
+    memory.value = {
+      ...data,
+      albums: await enrichSignedFileUrls(data?.albums || [])
+    }
+  } catch (error: any) {
+    uni.showToast({
+      title: getErrorMessage(error, '今日回忆加载失败'),
+      icon: 'none'
+    })
+  }
 }
 
 function openDiary(item: any) {
@@ -116,7 +127,7 @@ function formatTime(value: string) {
 }
 
 function imageUrl(item: any) {
-  return item.local_url || item.localUrl || item.object_key || ''
+  return toDisplayMediaUrl(item)
 }
 
 function yearsText(item: any) {

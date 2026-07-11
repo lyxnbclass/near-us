@@ -60,7 +60,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { request } from '@/api/client'
+import { getErrorMessage, request } from '@/api/client'
 
 const inviteCode = ref('')
 const code = ref('')
@@ -100,7 +100,7 @@ async function createInvite() {
       inviteGlow.value = false
     }, 560)
   } catch (error: any) {
-    uni.showToast({ title: error?.message || '生成失败', icon: 'none' })
+    uni.showToast({ title: getErrorMessage(error, '生成失败'), icon: 'none' })
   } finally {
     creatingInvite.value = false
   }
@@ -117,7 +117,7 @@ async function bind() {
     uni.showToast({ title: '空间已为你们点亮', icon: 'none' })
     uni.switchTab({ url: '/pages/home/index' })
   } catch (error: any) {
-    uni.showToast({ title: error?.message || '配对失败', icon: 'none' })
+    uni.showToast({ title: getErrorMessage(error, '配对失败'), icon: 'none' })
   } finally {
     binding.value = false
   }

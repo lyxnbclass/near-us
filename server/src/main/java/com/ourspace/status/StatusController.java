@@ -53,7 +53,7 @@ public class StatusController {
                     where id = ? and couple_id = ? and deleted_at is null
                     """, Integer.class, body.fileId(), coupleId);
             if (fileCount == null || fileCount == 0) {
-                return ApiResponse.fail("FILE_NOT_FOUND");
+                throw new BusinessException(HttpStatus.NOT_FOUND, "FILE_NOT_FOUND");
             }
         }
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -82,7 +82,7 @@ public class StatusController {
                 where id = ? and couple_id = ? and deleted_at is null
                 """, Integer.class, id, coupleId);
         if (count == null || count == 0) {
-            return ApiResponse.fail("STATUS_NOT_FOUND");
+            throw new BusinessException(HttpStatus.NOT_FOUND, "STATUS_NOT_FOUND");
         }
         var existing = jdbc.queryForObject("""
                 select count(*) from status_reactions

@@ -98,7 +98,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { request } from '@/api/client'
+import { getErrorMessage, request } from '@/api/client'
 
 const title = ref('')
 const content = ref('')
@@ -146,7 +146,14 @@ const emptyText = computed(() => {
 onShow(load)
 
 async function load() {
-  letters.value = await request('/future-letters')
+  try {
+    letters.value = await request('/future-letters')
+  } catch (error: any) {
+    uni.showToast({
+      title: getErrorMessage(error, '未来信加载失败'),
+      icon: 'none'
+    })
+  }
 }
 
 async function createLetter() {
@@ -181,6 +188,8 @@ async function createLetter() {
       glow.value = false
     }, 560)
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '未来信保存失败'), icon: 'none' })
   } finally {
     saving.value = false
   }
@@ -192,7 +201,7 @@ async function openLetter(letter: any) {
     uni.showModal({ title: detail.title, content: detail.content, showCancel: false })
   } catch (error: any) {
     uni.showToast({
-      title: error?.message === 'FUTURE_LETTER_LOCKED' ? '还没到打开的时候' : '暂时打不开这封信',
+      title: getErrorMessage(error, '暂时打不开这封信'),
       icon: 'none'
     })
   }

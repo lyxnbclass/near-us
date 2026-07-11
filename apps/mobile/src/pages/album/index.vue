@@ -71,7 +71,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { request } from '@/api/client'
+import { enrichSignedFileUrls, getErrorMessage, request, toDisplayMediaUrl, uploadMediaFile } from '@/api/client'
 import { ensurePairedSpace } from '@/utils/spaceGuard'
 import { isUserCancel } from '@/utils/uniErrors'
 
@@ -91,7 +91,12 @@ onShow(load)
 
 async function load() {
   if (!(await ensurePairedSpace())) return
-  albums.value = await request('/albums')
+  try {
+    const list = await request<any[]>('/albums')
+    albums.value = await enrichSignedFileUrls(list)
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时加载不了相册'), icon: 'none' })
+  }
 }
 
 async function choosePhoto() {
@@ -107,7 +112,7 @@ async function choosePhoto() {
     selectedSize.value = Number(file?.size || 0)
   } catch (error: any) {
     if (!isUserCancel(error)) {
-      uni.showToast({ title: error?.message || '选择照片失败', icon: 'none' })
+      uni.showToast({ title: '暂时不能选择照片', icon: 'none' })
     }
   }
 }
@@ -119,14 +124,10 @@ async function create() {
   }
   saving.value = true
   try {
-    const file = await request<{ id: number }>('/files', {
-      method: 'POST',
-      data: {
-        objectKey: selectedPhoto.value,
-        originalName: selectedName.value || selectedPhoto.value,
-        mimeType: inferMimeType(selectedName.value || selectedPhoto.value),
-        sizeBytes: selectedSize.value
-      }
+    const file = await uploadMediaFile(selectedPhoto.value, {
+      name: selectedName.value || selectedPhoto.value,
+      size: selectedSize.value,
+      mimeType: inferMimeType(selectedName.value || selectedPhoto.value)
     })
     await request('/albums', {
       method: 'POST',
@@ -148,7 +149,7 @@ async function create() {
     }, 650)
     await load()
   } catch (error: any) {
-    uni.showToast({ title: error?.message || '保存回忆失败', icon: 'none' })
+    uni.showToast({ title: getErrorMessage(error, '回忆暂时没有保存'), icon: 'none' })
   } finally {
     saving.value = false
   }
@@ -179,6 +180,8 @@ async function saveEdit(item: any) {
     }, 650)
     cancelEdit()
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '文案暂时没有更新'), icon: 'none' })
   } finally {
     editing.value = false
   }
@@ -192,16 +195,20 @@ function remove(item: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
-      await request(`/albums/${item.id}`, { method: 'DELETE' })
-      if (editingId.value === item.id) cancelEdit()
-      uni.showToast({ title: '已删除', icon: 'none' })
-      await load()
+      try {
+        await request(`/albums/${item.id}`, { method: 'DELETE' })
+        if (editingId.value === item.id) cancelEdit()
+        uni.showToast({ title: '已删除', icon: 'none' })
+        await load()
+      } catch (error: any) {
+        uni.showToast({ title: getErrorMessage(error, '暂时删除不了这段回忆'), icon: 'none' })
+      }
     }
   })
 }
 
 function getImageUrl(item: any) {
-  return item.local_url || item.localUrl || item.object_key || ''
+  return toDisplayMediaUrl(item)
 }
 
 function inferMimeType(name: string) {

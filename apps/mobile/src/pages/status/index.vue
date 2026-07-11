@@ -70,7 +70,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { request } from '@/api/client'
+import { enrichSignedFileUrls, getErrorMessage, request, toDisplayMediaUrl, uploadMediaFile } from '@/api/client'
 import { useSessionStore } from '@/stores/session'
 
 const tags = ['在想你', '想被抱一下', '在加班', '刚吃饭', '睡前想你']
@@ -90,22 +90,34 @@ const canPublish = computed(() => content.value.trim() || selectedPhoto.value)
 onShow(load)
 
 async function load() {
-  if (!session.userId) {
-    await session.loadCouple().catch(() => {})
+  try {
+    if (!session.userId) {
+      await session.loadCouple().catch(() => {})
+    }
+    const list = await request<any[]>('/statuses')
+    statuses.value = await enrichSignedFileUrls(list)
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时加载不了此刻'), icon: 'none' })
   }
-  statuses.value = await request('/statuses')
 }
 
 async function choosePhoto() {
-  const result = await uni.chooseImage({
-    count: 1,
-    sizeType: ['compressed'],
-    sourceType: ['album', 'camera']
-  })
-  const file = result.tempFiles?.[0] as any
-  selectedPhoto.value = result.tempFilePaths?.[0] || file?.path || ''
-  selectedName.value = file?.name || `status-${Date.now()}.jpg`
-  selectedSize.value = Number(file?.size || 0)
+  try {
+    const result = await uni.chooseImage({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera']
+    })
+    const file = result.tempFiles?.[0] as any
+    selectedPhoto.value = result.tempFilePaths?.[0] || file?.path || ''
+    selectedName.value = file?.name || `status-${Date.now()}.jpg`
+    selectedSize.value = Number(file?.size || 0)
+  } catch (error: any) {
+    const message = String(error?.errMsg || error?.message || '')
+    if (!message.includes('cancel')) {
+      uni.showToast({ title: '暂时不能选择照片', icon: 'none' })
+    }
+  }
 }
 
 function clearPhoto() {
@@ -124,7 +136,7 @@ function hasReaction(item: any, reactionKey: string) {
 }
 
 function statusImage(item: any) {
-  return item.local_url || item.localUrl || item.object_key || ''
+  return toDisplayMediaUrl(item)
 }
 
 async function react(item: any, reactionKey: string) {
@@ -132,12 +144,16 @@ async function react(item: any, reactionKey: string) {
     uni.showToast({ title: '已经回应过啦', icon: 'none' })
     return
   }
-  await request(`/statuses/${item.id}/reactions`, {
-    method: 'POST',
-    data: { reactionKey }
-  })
-  uni.showToast({ title: `已回应：${reactionKey}`, icon: 'none' })
-  await load()
+  try {
+    await request(`/statuses/${item.id}/reactions`, {
+      method: 'POST',
+      data: { reactionKey }
+    })
+    uni.showToast({ title: `已回应：${reactionKey}`, icon: 'none' })
+    await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时回应不了这条此刻'), icon: 'none' })
+  }
 }
 
 function canDelete(item: any) {
@@ -152,9 +168,13 @@ function remove(item: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
-      await request(`/statuses/${item.id}`, { method: 'DELETE' })
-      uni.showToast({ title: '已撤回', icon: 'none' })
-      await load()
+      try {
+        await request(`/statuses/${item.id}`, { method: 'DELETE' })
+        uni.showToast({ title: '已撤回', icon: 'none' })
+        await load()
+      } catch (error: any) {
+        uni.showToast({ title: getErrorMessage(error, '暂时撤回不了这条此刻'), icon: 'none' })
+      }
     }
   })
 }
@@ -168,14 +188,10 @@ async function publish() {
   try {
     let fileId: number | null = null
     if (selectedPhoto.value) {
-      const file = await request<{ id: number }>('/files', {
-        method: 'POST',
-        data: {
-          objectKey: selectedPhoto.value,
-          originalName: selectedName.value || selectedPhoto.value,
-          mimeType: inferMimeType(selectedName.value || selectedPhoto.value),
-          sizeBytes: selectedSize.value
-        }
+      const file = await uploadMediaFile(selectedPhoto.value, {
+        name: selectedName.value || selectedPhoto.value,
+        size: selectedSize.value,
+        mimeType: inferMimeType(selectedName.value || selectedPhoto.value)
       })
       fileId = file.id
     }
@@ -196,6 +212,8 @@ async function publish() {
       publishedGlow.value = false
     }, 560)
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '此刻暂时没有送达'), icon: 'none' })
   } finally {
     publishing.value = false
   }

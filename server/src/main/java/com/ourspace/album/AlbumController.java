@@ -59,7 +59,7 @@ public class AlbumController {
                 "select count(*) from files where id = ? and couple_id = ? and deleted_at is null",
                 Integer.class, body.fileId(), coupleId);
         if (fileCount == null || fileCount == 0) {
-            return ApiResponse.fail("FILE_NOT_FOUND");
+            throw new BusinessException(HttpStatus.NOT_FOUND, "FILE_NOT_FOUND");
         }
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {

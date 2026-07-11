@@ -110,7 +110,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { request } from '@/api/client'
+import { enrichSignedFileUrls, getErrorMessage, request, toDisplayMediaUrl, uploadMediaFile } from '@/api/client'
 
 const pets = ref<any[]>([])
 const events = ref<any[]>([])
@@ -137,10 +137,15 @@ const canSaveEvent = computed(() => selectedPetId.value && eventType.value && ev
 onShow(load)
 
 async function load() {
-  pets.value = await request('/modules/pet/profiles')
-  events.value = await request('/modules/pet/events')
-  if (!selectedPetId.value && pets.value.length) {
-    selectedPetId.value = pets.value[0].id
+  try {
+    pets.value = await request('/modules/pet/profiles')
+    const list = await request<any[]>('/modules/pet/events')
+    events.value = await enrichSignedFileUrls(list)
+    if (!selectedPetId.value && pets.value.length) {
+      selectedPetId.value = pets.value[0].id
+    }
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时加载不了宠物栏'), icon: 'none' })
   }
 }
 
@@ -153,15 +158,22 @@ function pickBirthday(event: any) {
 }
 
 async function choosePhoto() {
-  const result = await uni.chooseImage({
-    count: 1,
-    sizeType: ['compressed'],
-    sourceType: ['album', 'camera']
-  })
-  const file = result.tempFiles?.[0] as any
-  selectedPhoto.value = result.tempFilePaths?.[0] || file?.path || ''
-  selectedName.value = file?.name || `pet-event-${Date.now()}.jpg`
-  selectedSize.value = Number(file?.size || 0)
+  try {
+    const result = await uni.chooseImage({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera']
+    })
+    const file = result.tempFiles?.[0] as any
+    selectedPhoto.value = result.tempFilePaths?.[0] || file?.path || ''
+    selectedName.value = file?.name || `pet-event-${Date.now()}.jpg`
+    selectedSize.value = Number(file?.size || 0)
+  } catch (error: any) {
+    const message = String(error?.errMsg || error?.message || '')
+    if (!message.includes('cancel')) {
+      uni.showToast({ title: '暂时不能选择照片', icon: 'none' })
+    }
+  }
 }
 
 function clearPhoto() {
@@ -203,6 +215,8 @@ async function saveProfile() {
       profileGlow.value = false
     }, 650)
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '宠物档案暂时没有保存'), icon: 'none' })
   } finally {
     savingProfile.value = false
   }
@@ -230,11 +244,15 @@ function removeProfile(pet: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
-      await request(`/modules/pet/profiles/${pet.id}`, { method: 'DELETE' })
-      if (selectedPetId.value === pet.id) selectedPetId.value = null
-      if (editingPetId.value === pet.id) resetProfileForm()
-      uni.showToast({ title: '已删除', icon: 'none' })
-      await load()
+      try {
+        await request(`/modules/pet/profiles/${pet.id}`, { method: 'DELETE' })
+        if (selectedPetId.value === pet.id) selectedPetId.value = null
+        if (editingPetId.value === pet.id) resetProfileForm()
+        uni.showToast({ title: '已删除', icon: 'none' })
+        await load()
+      } catch (error: any) {
+        uni.showToast({ title: getErrorMessage(error, '暂时删除不了宠物档案'), icon: 'none' })
+      }
     }
   })
 }
@@ -248,14 +266,10 @@ async function createEvent() {
   try {
     let fileId: number | null = null
     if (selectedPhoto.value) {
-      const file = await request<{ id: number }>('/files', {
-        method: 'POST',
-        data: {
-          objectKey: selectedPhoto.value,
-          originalName: selectedName.value || selectedPhoto.value,
-          mimeType: inferMimeType(selectedName.value || selectedPhoto.value),
-          sizeBytes: selectedSize.value
-        }
+      const file = await uploadMediaFile(selectedPhoto.value, {
+        name: selectedName.value || selectedPhoto.value,
+        size: selectedSize.value,
+        mimeType: inferMimeType(selectedName.value || selectedPhoto.value)
       })
       fileId = file.id
     }
@@ -279,13 +293,15 @@ async function createEvent() {
       eventGlow.value = false
     }, 650)
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '宠物动态暂时没有保存'), icon: 'none' })
   } finally {
     savingEvent.value = false
   }
 }
 
 function eventImage(event: any) {
-  return event.local_url || event.localUrl || event.object_key || ''
+  return toDisplayMediaUrl(event)
 }
 
 function removeEvent(event: any) {
@@ -296,9 +312,13 @@ function removeEvent(event: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
-      await request(`/modules/pet/events/${event.id}`, { method: 'DELETE' })
-      uni.showToast({ title: '已删除', icon: 'none' })
-      await load()
+      try {
+        await request(`/modules/pet/events/${event.id}`, { method: 'DELETE' })
+        uni.showToast({ title: '已删除', icon: 'none' })
+        await load()
+      } catch (error: any) {
+        uni.showToast({ title: getErrorMessage(error, '暂时删除不了宠物动态'), icon: 'none' })
+      }
     }
   })
 }

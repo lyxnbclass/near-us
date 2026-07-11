@@ -25,6 +25,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useSessionStore } from '@/stores/session'
+import { getErrorMessage } from '@/api/client'
 
 const session = useSessionStore()
 const phone = ref('13800000001')
@@ -60,7 +61,7 @@ async function login() {
       uni.navigateTo({ url: '/pages/pair/index' })
     }
   } catch (error: any) {
-    errorText.value = error?.message || '登录失败，请稍后再试'
+    errorText.value = getErrorMessage(error, '登录失败，请稍后再试')
     uni.showToast({ title: errorText.value, icon: 'none' })
   } finally {
     loading.value = false

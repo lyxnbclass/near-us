@@ -22,6 +22,9 @@
 ## Core
 
 - `GET /api/home`
+- `POST /api/files/upload`
+- `POST /api/files`
+- `GET /api/files/{id}/signed-url`
 - `GET/POST /api/albums`
 - `PUT/DELETE /api/albums/{id}`
 - `GET/POST /api/statuses`
@@ -97,3 +100,9 @@
 - `POST /api/privacy/deletion-request`
 - `POST /api/privacy/deletion-request/cancel`
 - `GET /api/privacy/requests`
+
+## Files
+
+- `POST /api/files/upload` accepts multipart form data with `file` and optional `originalName`; it stores the file under `MEDIA_STORAGE_DIR` and returns `id`, `objectKey`, and `url`.
+- `POST /api/files` registers an existing object-storage key without uploading binary content.
+- `GET /api/files/{id}/signed-url` returns `{ "url": "...", "ttlSeconds": 900 }` for image preview; the URL includes `expires` and `sig` query parameters.

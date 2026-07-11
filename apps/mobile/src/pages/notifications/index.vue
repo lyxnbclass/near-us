@@ -53,7 +53,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { request } from '@/api/client'
+import { getErrorMessage, request } from '@/api/client'
 
 const notifications = ref<any[]>([])
 const activeFilter = ref<'all' | 'unread' | 'read'>('all')
@@ -87,14 +87,22 @@ const emptyText = computed(() => {
 onShow(load)
 
 async function load() {
-  notifications.value = await request('/notifications')
+  try {
+    notifications.value = await request('/notifications')
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时加载不了通知'), icon: 'none' })
+  }
 }
 
 async function markRead(item: any) {
   if (item.read_at) return
-  await request(`/notifications/${item.id}/read`, { method: 'POST' })
-  uni.showToast({ title: '已标记为已读', icon: 'none' })
-  await load()
+  try {
+    await request(`/notifications/${item.id}/read`, { method: 'POST' })
+    uni.showToast({ title: '已标记为已读', icon: 'none' })
+    await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时标记不了这条通知'), icon: 'none' })
+  }
 }
 
 async function markAllRead() {
@@ -104,6 +112,8 @@ async function markAllRead() {
     await request('/notifications/read-all', { method: 'POST' })
     uni.showToast({ title: '未读已清空', icon: 'none' })
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时清空不了未读'), icon: 'none' })
   } finally {
     markingAll.value = false
   }

@@ -87,7 +87,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { request } from '@/api/client'
+import { getErrorMessage, request } from '@/api/client'
 
 const topic = ref<any>(null)
 const topicAnswer = ref('')
@@ -114,9 +114,13 @@ const completedWishes = computed(() => wishes.value.filter(item => item.complete
 onShow(load)
 
 async function load() {
-  topic.value = await request('/interactions/daily-topic')
-  affectionCards.value = await request('/interactions/affection-cards')
-  wishes.value = await request('/interactions/wishes')
+  try {
+    topic.value = await request('/interactions/daily-topic')
+    affectionCards.value = await request('/interactions/affection-cards')
+    wishes.value = await request('/interactions/wishes')
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时加载不了心动小事'), icon: 'none' })
+  }
 }
 
 async function submitTopicAnswer() {
@@ -124,17 +128,21 @@ async function submitTopicAnswer() {
     uni.showToast({ title: '先写一句答案', icon: 'none' })
     return
   }
-  await request('/interactions/daily-topic/answer', {
-    method: 'POST',
-    data: { answer: topicAnswer.value }
-  })
-  topicAnswer.value = ''
-  topicGlow.value = true
-  uni.showToast({ title: '答案已放进今天', icon: 'none' })
-  setTimeout(() => {
-    topicGlow.value = false
-  }, 560)
-  await load()
+  try {
+    await request('/interactions/daily-topic/answer', {
+      method: 'POST',
+      data: { answer: topicAnswer.value }
+    })
+    topicAnswer.value = ''
+    topicGlow.value = true
+    uni.showToast({ title: '答案已放进今天', icon: 'none' })
+    setTimeout(() => {
+      topicGlow.value = false
+    }, 560)
+    await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '答案暂时没有送达'), icon: 'none' })
+  }
 }
 
 async function createCard() {
@@ -142,23 +150,27 @@ async function createCard() {
     uni.showToast({ title: '写个标题吧', icon: 'none' })
     return
   }
-  await request('/interactions/affection-cards', {
-    method: 'POST',
-    data: {
-      title: cardTitle.value,
-      amount: cardAmount.value ? Number(cardAmount.value) : null,
-      message: cardMessage.value
-    }
-  })
-  cardTitle.value = ''
-  cardAmount.value = ''
-  cardMessage.value = ''
-  cardGlow.value = true
-  uni.showToast({ title: '心意已收好', icon: 'none' })
-  setTimeout(() => {
-    cardGlow.value = false
-  }, 560)
-  await load()
+  try {
+    await request('/interactions/affection-cards', {
+      method: 'POST',
+      data: {
+        title: cardTitle.value,
+        amount: cardAmount.value ? Number(cardAmount.value) : null,
+        message: cardMessage.value
+      }
+    })
+    cardTitle.value = ''
+    cardAmount.value = ''
+    cardMessage.value = ''
+    cardGlow.value = true
+    uni.showToast({ title: '心意已收好', icon: 'none' })
+    setTimeout(() => {
+      cardGlow.value = false
+    }, 560)
+    await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '心意卡片暂时没有保存'), icon: 'none' })
+  }
 }
 
 async function createWish() {
@@ -166,36 +178,48 @@ async function createWish() {
     uni.showToast({ title: '写下一个愿望', icon: 'none' })
     return
   }
-  await request('/interactions/wishes', {
-    method: 'POST',
-    data: { title: wishTitle.value, note: wishNote.value }
-  })
-  wishTitle.value = ''
-  wishNote.value = ''
-  wishGlow.value = true
-  uni.showToast({ title: '愿望已加入', icon: 'none' })
-  setTimeout(() => {
-    wishGlow.value = false
-  }, 560)
-  await load()
+  try {
+    await request('/interactions/wishes', {
+      method: 'POST',
+      data: { title: wishTitle.value, note: wishNote.value }
+    })
+    wishTitle.value = ''
+    wishNote.value = ''
+    wishGlow.value = true
+    uni.showToast({ title: '愿望已加入', icon: 'none' })
+    setTimeout(() => {
+      wishGlow.value = false
+    }, 560)
+    await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '愿望暂时没有加入'), icon: 'none' })
+  }
 }
 
 async function completeWish(wish: any) {
   if (wish.completed) return
-  await request(`/interactions/wishes/${wish.id}/complete`, { method: 'POST' })
-  uni.showToast({ title: '一起完成了一件事', icon: 'none' })
-  await load()
+  try {
+    await request(`/interactions/wishes/${wish.id}/complete`, { method: 'POST' })
+    uni.showToast({ title: '一起完成了一件事', icon: 'none' })
+    await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时不能完成这个愿望'), icon: 'none' })
+  }
 }
 
 async function toggleWish(wish: any) {
-  if (wish.completed) {
-    await request(`/interactions/wishes/${wish.id}/reopen`, { method: 'POST' })
-    uni.showToast({ title: '已放回愿望清单', icon: 'none' })
-  } else {
-    await request(`/interactions/wishes/${wish.id}/complete`, { method: 'POST' })
-    uni.showToast({ title: '一起完成了一件事', icon: 'none' })
+  try {
+    if (wish.completed) {
+      await request(`/interactions/wishes/${wish.id}/reopen`, { method: 'POST' })
+      uni.showToast({ title: '已放回愿望清单', icon: 'none' })
+    } else {
+      await request(`/interactions/wishes/${wish.id}/complete`, { method: 'POST' })
+      uni.showToast({ title: '一起完成了一件事', icon: 'none' })
+    }
+    await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '愿望状态暂时改不了'), icon: 'none' })
   }
-  await load()
 }
 
 function startEditWish(wish: any) {
@@ -228,6 +252,8 @@ async function saveWish(wish: any) {
     }, 650)
     cancelEditWish()
     await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '愿望暂时没有更新'), icon: 'none' })
   } finally {
     editingWish.value = false
   }
@@ -241,10 +267,14 @@ function removeWish(wish: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
-      await request(`/interactions/wishes/${wish.id}`, { method: 'DELETE' })
-      if (editingWishId.value === wish.id) cancelEditWish()
-      uni.showToast({ title: '已删除', icon: 'none' })
-      await load()
+      try {
+        await request(`/interactions/wishes/${wish.id}`, { method: 'DELETE' })
+        if (editingWishId.value === wish.id) cancelEditWish()
+        uni.showToast({ title: '已删除', icon: 'none' })
+        await load()
+      } catch (error: any) {
+        uni.showToast({ title: getErrorMessage(error, '暂时删除不了这个愿望'), icon: 'none' })
+      }
     }
   })
 }

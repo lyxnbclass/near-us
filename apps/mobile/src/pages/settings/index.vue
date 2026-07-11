@@ -75,7 +75,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { request } from '@/api/client'
+import { getErrorMessage, request } from '@/api/client'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
@@ -105,18 +105,22 @@ const currentUserText = computed(() => {
 onShow(load)
 
 async function load() {
-  if (!session.userId) {
-    await session.loadCouple().catch(() => {})
-  }
-  const relation = await request<any>('/couples/me')
-  paired.value = Boolean(relation.paired)
-  couple.value = relation.couple || null
-  members.value = relation.members || []
-  if (paired.value && couple.value?.status === 'active') {
-    const modules = await request<any[]>('/modules')
-    petEnabled.value = modules.some(item => item.module_key === 'pet' && item.enabled)
-  } else {
-    petEnabled.value = false
+  try {
+    if (!session.userId) {
+      await session.loadCouple().catch(() => {})
+    }
+    const relation = await request<any>('/couples/me')
+    paired.value = Boolean(relation.paired)
+    couple.value = relation.couple || null
+    members.value = relation.members || []
+    if (paired.value && couple.value?.status === 'active') {
+      const modules = await request<any[]>('/modules')
+      petEnabled.value = modules.some(item => item.module_key === 'pet' && item.enabled)
+    } else {
+      petEnabled.value = false
+    }
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时加载不了设置'), icon: 'none' })
   }
 }
 
@@ -126,8 +130,15 @@ async function togglePet(event: any) {
     petEnabled.value = false
     return
   }
-  petEnabled.value = event.detail.value
-  await request('/modules/pet', { method: 'PUT', data: { enabled: petEnabled.value } })
+  const nextEnabled = event.detail.value
+  const previousEnabled = petEnabled.value
+  petEnabled.value = nextEnabled
+  try {
+    await request('/modules/pet', { method: 'PUT', data: { enabled: petEnabled.value } })
+  } catch (error: any) {
+    petEnabled.value = previousEnabled
+    uni.showToast({ title: getErrorMessage(error, '模块状态暂时改不了'), icon: 'none' })
+  }
 }
 
 function requestUnbind() {
@@ -137,17 +148,25 @@ function requestUnbind() {
     confirmText: '提交',
     success: async result => {
       if (!result.confirm) return
-      await request('/couples/unbind-request', { method: 'POST' })
-      uni.showToast({ title: '已进入冷静期', icon: 'none' })
-      await load()
+      try {
+        await request('/couples/unbind-request', { method: 'POST' })
+        uni.showToast({ title: '已进入冷静期', icon: 'none' })
+        await load()
+      } catch (error: any) {
+        uni.showToast({ title: getErrorMessage(error, '暂时不能申请解绑'), icon: 'none' })
+      }
     }
   })
 }
 
 async function cancelUnbind() {
-  await request('/couples/unbind-cancel', { method: 'POST' })
-  uni.showToast({ title: '已撤销解绑', icon: 'none' })
-  await load()
+  try {
+    await request('/couples/unbind-cancel', { method: 'POST' })
+    uni.showToast({ title: '已撤销解绑', icon: 'none' })
+    await load()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时不能撤销解绑'), icon: 'none' })
+  }
 }
 
 function confirmUnbind() {
@@ -158,12 +177,16 @@ function confirmUnbind() {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
-      await request('/couples/unbind-confirm', { method: 'POST' })
-      uni.showToast({ title: '已解除配对', icon: 'none' })
-      paired.value = false
-      couple.value = null
-      members.value = []
-      uni.navigateTo({ url: '/pages/pair/index' })
+      try {
+        await request('/couples/unbind-confirm', { method: 'POST' })
+        uni.showToast({ title: '已解除配对', icon: 'none' })
+        paired.value = false
+        couple.value = null
+        members.value = []
+        uni.navigateTo({ url: '/pages/pair/index' })
+      } catch (error: any) {
+        uni.showToast({ title: getErrorMessage(error, '暂时不能解除配对'), icon: 'none' })
+      }
     }
   })
 }

@@ -102,7 +102,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { request } from '@/api/client'
+import { getErrorMessage, request } from '@/api/client'
 import { ensurePairedSpace } from '@/utils/spaceGuard'
 
 const title = ref('')
@@ -136,8 +136,12 @@ onShow(load)
 
 async function load() {
   if (!(await ensurePairedSpace())) return
-  const list = await request<any[]>('/anniversaries')
-  anniversaries.value = sortedByNext(list)
+  try {
+    const list = await request<any[]>('/anniversaries')
+    anniversaries.value = sortedByNext(list)
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时加载不了纪念日'), icon: 'none' })
+  }
 }
 
 function pickDate(event: any) {
@@ -175,7 +179,7 @@ async function save() {
     }, 650)
     await load()
   } catch (error: any) {
-    uni.showToast({ title: error?.message || '保存纪念日失败', icon: 'none' })
+    uni.showToast({ title: getErrorMessage(error, '这个日子暂时没有保存'), icon: 'none' })
   } finally {
     saving.value = false
   }
@@ -204,7 +208,7 @@ function remove(item: any) {
         uni.showToast({ title: '已删除', icon: 'none' })
         await load()
       } catch (error: any) {
-        uni.showToast({ title: error?.message || '删除失败', icon: 'none' })
+        uni.showToast({ title: getErrorMessage(error, '暂时删除不了这个日子'), icon: 'none' })
       }
     }
   })
