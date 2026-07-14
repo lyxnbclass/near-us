@@ -143,21 +143,32 @@ onShow(load)
 async function load() {
   try {
     pets.value = await request('/modules/pet/profiles')
-    const list = await request<any[]>('/modules/pet/events')
-    events.value = await enrichSignedFileUrls(list)
     if (selectedPetId.value && !pets.value.some(item => item.id === selectedPetId.value)) {
       selectedPetId.value = null
     }
     if (!selectedPetId.value && pets.value.length) {
       selectedPetId.value = pets.value[0].id
     }
+    await loadEvents()
   } catch (error: any) {
     uni.showToast({ title: getErrorMessage(error, '暂时加载不了宠物栏'), icon: 'none' })
   }
 }
 
-function selectPet(id: number) {
+async function loadEvents() {
+  const path = selectedPetId.value ? `/modules/pet/events?petId=${selectedPetId.value}` : '/modules/pet/events'
+  const list = await request<any[]>(path)
+  events.value = await enrichSignedFileUrls(list)
+}
+
+async function selectPet(id: number) {
+  if (selectedPetId.value === id) return
   selectedPetId.value = id
+  try {
+    await loadEvents()
+  } catch (error: any) {
+    uni.showToast({ title: getErrorMessage(error, '暂时加载不了宠物动态'), icon: 'none' })
+  }
 }
 
 function pickBirthday(event: any) {

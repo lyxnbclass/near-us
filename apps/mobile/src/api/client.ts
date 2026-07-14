@@ -441,7 +441,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
     return handled({ id, deleted: true })
   }
 
-  if (path === '/modules/pet/events' && method === 'GET') {
+  if (path.split('?')[0] === '/modules/pet/events' && method === 'GET') {
     if (!state.petEnabled) throw new Error('MODULE_DISABLED')
     const petId = queryNumber(path, 'petId')
     const events = state.petEvents || []
