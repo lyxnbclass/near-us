@@ -195,12 +195,15 @@ function remove(item: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
+      const previousAlbums = albums.value
+      albums.value = albums.value.filter(record => record.id !== item.id)
       try {
         await request(`/albums/${item.id}`, { method: 'DELETE' })
         if (editingId.value === item.id) cancelEdit()
         uni.showToast({ title: '已删除', icon: 'none' })
         await load()
       } catch (error: any) {
+        albums.value = previousAlbums
         uni.showToast({ title: getErrorMessage(error, '暂时删除不了这段回忆'), icon: 'none' })
       }
     }
