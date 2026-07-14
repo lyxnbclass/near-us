@@ -94,25 +94,39 @@ async function load() {
   }
 }
 
+function markNotificationsReadLocally(ids: number[], readAt: string) {
+  const idSet = new Set(ids)
+  notifications.value = notifications.value.map(item => idSet.has(item.id)
+    ? { ...item, read_at: readAt }
+    : item)
+}
+
 async function markRead(item: any) {
   if (item.read_at) return
+  const previousNotifications = notifications.value
+  markNotificationsReadLocally([item.id], new Date().toISOString())
   try {
     await request(`/notifications/${item.id}/read`, { method: 'POST' })
     uni.showToast({ title: '已标记为已读', icon: 'none' })
     await load()
   } catch (error: any) {
+    notifications.value = previousNotifications
     uni.showToast({ title: getErrorMessage(error, '暂时标记不了这条通知'), icon: 'none' })
   }
 }
 
 async function markAllRead() {
   if (!unreadCount.value || markingAll.value) return
+  const previousNotifications = notifications.value
+  const unreadIds = notifications.value.filter(item => !item.read_at).map(item => item.id)
   markingAll.value = true
+  markNotificationsReadLocally(unreadIds, new Date().toISOString())
   try {
     await request('/notifications/read-all', { method: 'POST' })
     uni.showToast({ title: '未读已清空', icon: 'none' })
     await load()
   } catch (error: any) {
+    notifications.value = previousNotifications
     uni.showToast({ title: getErrorMessage(error, '暂时清空不了未读'), icon: 'none' })
   } finally {
     markingAll.value = false
