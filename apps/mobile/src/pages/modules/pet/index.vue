@@ -86,10 +86,10 @@
 
       <view class="section-head">
         <text>宠物时间线</text>
-        <text class="count">{{ events.length }} 条</text>
+        <text class="count">{{ visibleEvents.length }} 条</text>
       </view>
       <view class="timeline">
-        <view v-for="event in events" :key="event.id" class="card glass-card event-card">
+        <view v-for="event in visibleEvents" :key="event.id" class="card glass-card event-card">
           <image v-if="eventImage(event)" class="event-photo" :src="eventImage(event)" mode="aspectFill" />
           <text class="event-title">{{ event.pet_name }} · {{ event.event_type }}</text>
           <text class="event-content">{{ event.content || '留下了一个小瞬间。' }}</text>
@@ -98,7 +98,7 @@
             <text class="delete-link" @click="removeEvent(event)">删除</text>
           </view>
         </view>
-        <view v-if="!events.length" class="card glass-card empty">
+        <view v-if="!visibleEvents.length" class="card glass-card empty">
           <text>还没有宠物动态。</text>
           <text class="muted">先记录一次喂食、散步或撒娇。</text>
         </view>
@@ -132,6 +132,10 @@ const eventGlow = ref(false)
 
 const eventTypes = ['喂食', '散步', '洗澡', '撒娇', '日常']
 const selectedPetName = computed(() => pets.value.find(item => item.id === selectedPetId.value)?.name || '')
+const visibleEvents = computed(() => {
+  if (!selectedPetId.value) return events.value
+  return events.value.filter(item => item.pet_id === selectedPetId.value)
+})
 const canSaveEvent = computed(() => selectedPetId.value && eventType.value && eventContent.value.trim())
 
 onShow(load)
@@ -141,6 +145,9 @@ async function load() {
     pets.value = await request('/modules/pet/profiles')
     const list = await request<any[]>('/modules/pet/events')
     events.value = await enrichSignedFileUrls(list)
+    if (selectedPetId.value && !pets.value.some(item => item.id === selectedPetId.value)) {
+      selectedPetId.value = null
+    }
     if (!selectedPetId.value && pets.value.length) {
       selectedPetId.value = pets.value[0].id
     }
