@@ -202,12 +202,15 @@ function remove(item: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
+      const previousAnniversaries = anniversaries.value
+      anniversaries.value = anniversaries.value.filter(record => record.id !== item.id)
       try {
         await request(`/anniversaries/${item.id}`, { method: 'DELETE' })
         if (editingId.value === item.id) resetForm()
         uni.showToast({ title: '已删除', icon: 'none' })
         await load()
       } catch (error: any) {
+        anniversaries.value = previousAnniversaries
         uni.showToast({ title: getErrorMessage(error, '暂时删除不了这个日子'), icon: 'none' })
       }
     }
