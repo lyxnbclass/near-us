@@ -207,7 +207,22 @@ async function completeWish(wish: any) {
   }
 }
 
+function updateWishStateLocally(wishId: number, completed: boolean) {
+  const now = new Date().toISOString()
+  wishes.value = wishes.value.map(item => item.id === wishId
+    ? {
+        ...item,
+        completed,
+        completed_at: completed ? now : null,
+        completed_by: completed ? item.completed_by : null
+      }
+    : item)
+}
+
 async function toggleWish(wish: any) {
+  const previousWishes = wishes.value
+  const nextCompleted = !wish.completed
+  updateWishStateLocally(wish.id, nextCompleted)
   try {
     if (wish.completed) {
       await request(`/interactions/wishes/${wish.id}/reopen`, { method: 'POST' })
@@ -218,6 +233,7 @@ async function toggleWish(wish: any) {
     }
     await load()
   } catch (error: any) {
+    wishes.value = previousWishes
     uni.showToast({ title: getErrorMessage(error, '愿望状态暂时改不了'), icon: 'none' })
   }
 }
