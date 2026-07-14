@@ -189,11 +189,14 @@ function remove(item: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
+      const previousStatuses = statuses.value
+      statuses.value = statuses.value.filter(record => record.id !== item.id)
       try {
         await request(`/statuses/${item.id}`, { method: 'DELETE' })
         uni.showToast({ title: '已撤回', icon: 'none' })
         await load()
       } catch (error: any) {
+        statuses.value = previousStatuses
         uni.showToast({ title: getErrorMessage(error, '暂时撤回不了这条此刻'), icon: 'none' })
       }
     }
