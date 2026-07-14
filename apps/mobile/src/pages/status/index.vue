@@ -135,6 +135,24 @@ function hasReaction(item: any, reactionKey: string) {
   return reactionList(item).includes(reactionKey)
 }
 
+function setStatusReactions(statusId: number, reactions: string) {
+  statuses.value = statuses.value.map(item => item.id === statusId
+    ? { ...item, reactions }
+    : item)
+}
+
+function appendStatusReaction(statusId: number, reactionKey: string) {
+  statuses.value = statuses.value.map(item => {
+    if (item.id !== statusId) return item
+    const reactions = reactionList(item)
+    if (reactions.includes(reactionKey)) return item
+    return {
+      ...item,
+      reactions: [...reactions, reactionKey].join(',')
+    }
+  })
+}
+
 function statusImage(item: any) {
   return toDisplayMediaUrl(item)
 }
@@ -144,6 +162,8 @@ async function react(item: any, reactionKey: string) {
     uni.showToast({ title: '已经回应过啦', icon: 'none' })
     return
   }
+  const previousReactions = item.reactions || ''
+  appendStatusReaction(item.id, reactionKey)
   try {
     await request(`/statuses/${item.id}/reactions`, {
       method: 'POST',
@@ -152,6 +172,7 @@ async function react(item: any, reactionKey: string) {
     uni.showToast({ title: `已回应：${reactionKey}`, icon: 'none' })
     await load()
   } catch (error: any) {
+    setStatusReactions(item.id, previousReactions)
     uni.showToast({ title: getErrorMessage(error, '暂时回应不了这条此刻'), icon: 'none' })
   }
 }
