@@ -330,11 +330,14 @@ function removeEvent(event: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
+      const previousEvents = events.value
+      events.value = events.value.filter(record => record.id !== event.id)
       try {
         await request(`/modules/pet/events/${event.id}`, { method: 'DELETE' })
         uni.showToast({ title: '已删除', icon: 'none' })
         await load()
       } catch (error: any) {
+        events.value = previousEvents
         uni.showToast({ title: getErrorMessage(error, '暂时删除不了宠物动态'), icon: 'none' })
       }
     }
