@@ -268,12 +268,20 @@ function removeDiary() {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm || !currentDiary.value) return
+      const diaryId = currentDiary.value.id
+      const previousDiaries = diaries.value
+      const previousDiary = currentDiary.value
+      const previousComments = comments.value
+      diaries.value = diaries.value.filter(record => record.id !== diaryId)
+      closeDetail()
       try {
-        await request(`/diaries/${currentDiary.value.id}`, { method: 'DELETE' })
+        await request(`/diaries/${diaryId}`, { method: 'DELETE' })
         uni.showToast({ title: '已删除', icon: 'none' })
-        closeDetail()
         await load()
       } catch (error: any) {
+        diaries.value = previousDiaries
+        currentDiary.value = previousDiary
+        comments.value = previousComments
         uni.showToast({ title: getErrorMessage(error, '暂时删除不了这篇日记'), icon: 'none' })
       }
     }
