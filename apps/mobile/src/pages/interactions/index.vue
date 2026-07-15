@@ -283,12 +283,15 @@ function removeWish(wish: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
+      const previousWishes = wishes.value
+      wishes.value = wishes.value.filter(record => record.id !== wish.id)
       try {
         await request(`/interactions/wishes/${wish.id}`, { method: 'DELETE' })
         if (editingWishId.value === wish.id) cancelEditWish()
         uni.showToast({ title: '已删除', icon: 'none' })
         await load()
       } catch (error: any) {
+        wishes.value = previousWishes
         uni.showToast({ title: getErrorMessage(error, '暂时删除不了这个愿望'), icon: 'none' })
       }
     }
