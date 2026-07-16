@@ -82,6 +82,19 @@ function validateDiaryVisibility(visibility: unknown) {
   }
 }
 
+function getDemoFile(state: any, fileId: unknown) {
+  if (fileId == null) return undefined
+  const file = (state.files || []).find((item: any) => item.id === fileId)
+  if (!file) throw new Error('FILE_NOT_FOUND')
+  return file
+}
+
+function requireDemoFile(state: any, fileId: unknown) {
+  const file = getDemoFile(state, fileId)
+  if (!file) throw new Error('FILE_NOT_FOUND')
+  return file
+}
+
 export function toDisplayMediaUrl(item: any) {
   const url = item?.local_url || item?.localUrl || item?.signed_url || item?.signedUrl || ''
   if (url) return normalizeMediaUrl(url)
@@ -459,8 +472,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
     const body = options.data as any
     const pet = (state.petProfiles || []).find((item: any) => item.id === body?.petId)
     if (!pet) throw new Error('PET_NOT_FOUND')
-    const file = (state.files || []).find((item: any) => item.id === body?.fileId)
-    if (body?.fileId && !file) throw new Error('FILE_NOT_FOUND')
+    const file = getDemoFile(state, body?.fileId)
     state.petEvents = state.petEvents || []
     const event = {
       id: Date.now(),
@@ -523,8 +535,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/albums' && method === 'POST') {
     const body = options.data as any
-    const file = (state.files || []).find((item: any) => item.id === body?.fileId)
-    if (!file) throw new Error('FILE_NOT_FOUND')
+    const file = requireDemoFile(state, body?.fileId)
     state.albums = state.albums || []
     const album = {
       id: Date.now(),
@@ -996,8 +1007,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/statuses' && method === 'POST') {
     const body = options.data as any
-    const file = (state.files || []).find((item: any) => item.id === body?.fileId)
-    if (body?.fileId && !file) throw new Error('FILE_NOT_FOUND')
+    const file = getDemoFile(state, body?.fileId)
     state.statuses = state.statuses || []
     state.notifications = state.notifications || []
     state.statuses.unshift({
