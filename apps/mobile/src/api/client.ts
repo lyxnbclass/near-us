@@ -522,6 +522,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
   if (path === '/albums' && method === 'POST') {
     const body = options.data as any
     const file = (state.files || []).find((item: any) => item.id === body?.fileId)
+    if (!file) throw new Error('FILE_NOT_FOUND')
     state.albums = state.albums || []
     const album = {
       id: Date.now(),
