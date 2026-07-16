@@ -493,6 +493,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/files' && method === 'POST') {
     const body = options.data as any
+    if (!body?.objectKey) throw new Error('FILE_EMPTY')
     state.files = state.files || []
     const file = {
       id: Date.now(),
