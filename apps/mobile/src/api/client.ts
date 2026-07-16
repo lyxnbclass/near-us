@@ -994,6 +994,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
   if (path === '/statuses' && method === 'POST') {
     const body = options.data as any
     const file = (state.files || []).find((item: any) => item.id === body?.fileId)
+    if (body?.fileId && !file) throw new Error('FILE_NOT_FOUND')
     state.statuses = state.statuses || []
     state.notifications = state.notifications || []
     state.statuses.unshift({
