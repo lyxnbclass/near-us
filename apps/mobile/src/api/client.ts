@@ -76,6 +76,12 @@ export function getErrorMessage(error: unknown, fallback = '操作失败，请�
   return code
 }
 
+function validateDiaryVisibility(visibility: unknown) {
+  if (visibility !== 'private' && visibility !== 'shared') {
+    throw new Error('INVALID_DIARY_VISIBILITY')
+  }
+}
+
 export function toDisplayMediaUrl(item: any) {
   const url = item?.local_url || item?.localUrl || item?.signed_url || item?.signedUrl || ''
   if (url) return normalizeMediaUrl(url)
@@ -575,13 +581,14 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/diaries' && method === 'POST') {
     const body = options.data as any
+    validateDiaryVisibility(body?.visibility)
     state.diaries = state.diaries || []
     const diary = {
       id: Date.now(),
       owner_user_id: state.user?.id || 1,
       title: body?.title || '今天想保存的一小段',
       content: body?.content || '',
-      visibility: body?.visibility || 'private',
+      visibility: body.visibility,
       comments: [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -594,6 +601,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
   if (path.startsWith('/diaries/') && method === 'PUT') {
     const id = Number(path.split('/')[2])
     const body = options.data as any
+    validateDiaryVisibility(body?.visibility)
     let updated = false
     state.diaries = (state.diaries || []).map((item: any) => {
       if (item.id !== id) return item
@@ -602,7 +610,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
         ...item,
         title: body?.title || item.title,
         content: body?.content || item.content,
-        visibility: body?.visibility || item.visibility,
+        visibility: body.visibility,
         updated_at: new Date().toISOString()
       }
     })
