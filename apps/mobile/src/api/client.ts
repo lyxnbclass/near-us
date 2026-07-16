@@ -460,6 +460,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
     const pet = (state.petProfiles || []).find((item: any) => item.id === body?.petId)
     if (!pet) throw new Error('PET_NOT_FOUND')
     const file = (state.files || []).find((item: any) => item.id === body?.fileId)
+    if (body?.fileId && !file) throw new Error('FILE_NOT_FOUND')
     state.petEvents = state.petEvents || []
     const event = {
       id: Date.now(),
