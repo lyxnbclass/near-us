@@ -196,17 +196,6 @@ async function createWish() {
   }
 }
 
-async function completeWish(wish: any) {
-  if (wish.completed) return
-  try {
-    await request(`/interactions/wishes/${wish.id}/complete`, { method: 'POST' })
-    uni.showToast({ title: '一起完成了一件事', icon: 'none' })
-    await load()
-  } catch (error: any) {
-    uni.showToast({ title: getErrorMessage(error, '暂时不能完成这个愿望'), icon: 'none' })
-  }
-}
-
 function updateWishStateLocally(wishId: number, completed: boolean) {
   const now = new Date().toISOString()
   wishes.value = wishes.value.map(item => item.id === wishId
