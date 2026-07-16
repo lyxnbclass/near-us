@@ -740,6 +740,8 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path.startsWith('/interactions/wishes/') && path.endsWith('/complete') && method === 'POST') {
     const id = Number(path.split('/')[3])
+    const exists = (state.wishes || []).some((item: any) => item.id === id)
+    if (!exists) throw new Error('WISH_NOT_FOUND')
     state.wishes = (state.wishes || []).map((item: any) => item.id === id
       ? { ...item, completed: true, completed_at: new Date().toISOString() }
       : item)
@@ -749,6 +751,8 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path.startsWith('/interactions/wishes/') && path.endsWith('/reopen') && method === 'POST') {
     const id = Number(path.split('/')[3])
+    const exists = (state.wishes || []).some((item: any) => item.id === id)
+    if (!exists) throw new Error('WISH_NOT_FOUND')
     state.wishes = (state.wishes || []).map((item: any) => item.id === id
       ? { ...item, completed: false, completed_at: null, completed_by: null, updated_at: new Date().toISOString() }
       : item)
