@@ -843,13 +843,23 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/future-letters' && method === 'POST') {
     const body = options.data as any
+    const openAt = body?.openAt
+    const recipientMode = body?.recipientMode || 'partner'
+    const openAtTime = new Date(openAt).getTime()
+    if (!openAt) throw new Error('FUTURE_LETTER_OPEN_AT_REQUIRED')
+    if (Number.isNaN(openAtTime) || openAtTime < Date.now()) {
+      throw new Error('FUTURE_LETTER_OPEN_AT_PAST')
+    }
+    if (recipientMode !== 'partner' && recipientMode !== 'both') {
+      throw new Error('INVALID_RECIPIENT_MODE')
+    }
     state.futureLetters = state.futureLetters || []
     state.futureLetters.unshift({
       id: Date.now(),
       title: body?.title || '写给未来的你',
       content: body?.content || '',
-      open_at: body?.openAt || new Date().toISOString(),
-      recipient_user_id: body?.recipientMode === 'both' ? null : 2,
+      open_at: openAt,
+      recipient_user_id: recipientMode === 'both' ? null : 2,
       created_at: new Date().toISOString(),
       sender_name: state.user?.nickname || '我'
     })
