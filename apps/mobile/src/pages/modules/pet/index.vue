@@ -262,13 +262,30 @@ function removeProfile(pet: any) {
     confirmColor: '#9E4D43',
     success: async result => {
       if (!result.confirm) return
+      const previousPets = pets.value
+      const previousEvents = events.value
+      const previousSelectedPetId = selectedPetId.value
+      const previousEditingPetId = editingPetId.value
+      const previousName = name.value
+      const previousBreed = breed.value
+      const previousBirthday = birthday.value
+      const remainingPets = pets.value.filter(record => record.id !== pet.id)
+      pets.value = remainingPets
+      events.value = events.value.filter(record => record.pet_id !== pet.id)
+      if (selectedPetId.value === pet.id) selectedPetId.value = remainingPets[0]?.id || null
+      if (editingPetId.value === pet.id) resetProfileForm()
       try {
         await request(`/modules/pet/profiles/${pet.id}`, { method: 'DELETE' })
-        if (selectedPetId.value === pet.id) selectedPetId.value = null
-        if (editingPetId.value === pet.id) resetProfileForm()
         uni.showToast({ title: '已删除', icon: 'none' })
         await load()
       } catch (error: any) {
+        pets.value = previousPets
+        events.value = previousEvents
+        selectedPetId.value = previousSelectedPetId
+        editingPetId.value = previousEditingPetId
+        name.value = previousName
+        breed.value = previousBreed
+        birthday.value = previousBirthday
         uni.showToast({ title: getErrorMessage(error, '暂时删除不了宠物档案'), icon: 'none' })
       }
     }
