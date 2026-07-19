@@ -730,10 +730,12 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/interactions/affection-cards' && method === 'POST') {
     const body = options.data as any
+    const title = String(body?.title || '').trim()
+    if (!title) throw new Error('VALIDATION_FAILED')
     state.affectionCards = state.affectionCards || []
     state.affectionCards.unshift({
       id: Date.now(),
-      title: body?.title || '给你的一点心意',
+      title,
       amount: body?.amount || null,
       message: body?.message || '',
       nickname: state.user?.nickname || '我',
