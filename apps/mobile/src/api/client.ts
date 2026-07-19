@@ -875,9 +875,12 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/future-letters' && method === 'POST') {
     const body = options.data as any
+    const title = String(body?.title || '').trim()
+    const content = String(body?.content || '').trim()
     const openAt = body?.openAt
     const recipientMode = body?.recipientMode || 'partner'
     const openAtTime = new Date(openAt).getTime()
+    if (!title || !content) throw new Error('VALIDATION_FAILED')
     if (!openAt) throw new Error('FUTURE_LETTER_OPEN_AT_REQUIRED')
     if (Number.isNaN(openAtTime) || openAtTime < Date.now()) {
       throw new Error('FUTURE_LETTER_OPEN_AT_PAST')
@@ -888,8 +891,8 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
     state.futureLetters = state.futureLetters || []
     state.futureLetters.unshift({
       id: Date.now(),
-      title: body?.title || '写给未来的你',
-      content: body?.content || '',
+      title,
+      content,
       open_at: openAt,
       recipient_user_id: recipientMode === 'both' ? null : 2,
       created_at: new Date().toISOString(),
