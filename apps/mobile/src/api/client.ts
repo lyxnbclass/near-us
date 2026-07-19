@@ -602,13 +602,16 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/diaries' && method === 'POST') {
     const body = options.data as any
+    const title = String(body?.title || '').trim()
+    const content = String(body?.content || '').trim()
+    if (!title || !content) throw new Error('VALIDATION_FAILED')
     validateDiaryVisibility(body?.visibility)
     state.diaries = state.diaries || []
     const diary = {
       id: Date.now(),
       owner_user_id: state.user?.id || 1,
-      title: body?.title || '今天想保存的一小段',
-      content: body?.content || '',
+      title,
+      content,
       visibility: body.visibility,
       comments: [],
       created_at: new Date().toISOString(),
@@ -622,6 +625,9 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
   if (path.startsWith('/diaries/') && method === 'PUT') {
     const id = Number(path.split('/')[2])
     const body = options.data as any
+    const title = String(body?.title || '').trim()
+    const content = String(body?.content || '').trim()
+    if (!title || !content) throw new Error('VALIDATION_FAILED')
     validateDiaryVisibility(body?.visibility)
     let updated = false
     state.diaries = (state.diaries || []).map((item: any) => {
@@ -629,8 +635,8 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
       updated = true
       return {
         ...item,
-        title: body?.title || item.title,
-        content: body?.content || item.content,
+        title,
+        content,
         visibility: body.visibility,
         updated_at: new Date().toISOString()
       }
