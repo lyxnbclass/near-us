@@ -656,12 +656,14 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
     const diary = (state.diaries || []).find((item: any) => item.id === id)
     if (!diary) throw new Error('DIARY_NOT_FOUND')
     if (diary.visibility !== 'shared') throw new Error('DIARY_PRIVATE')
+    const content = String(body?.content || '').trim()
+    if (!content) throw new Error('VALIDATION_FAILED')
     diary.comments = diary.comments || []
     diary.comments.push({
       id: Date.now(),
       created_by: state.user?.id || 1,
       nickname: state.user?.nickname || '我',
-      content: body?.content || '',
+      content,
       created_at: new Date().toISOString()
     })
     saveDemoState(state)
