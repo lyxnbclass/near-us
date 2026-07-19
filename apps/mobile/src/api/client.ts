@@ -476,15 +476,18 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
     const body = options.data as any
     const pet = (state.petProfiles || []).find((item: any) => item.id === body?.petId)
     if (!pet) throw new Error('PET_NOT_FOUND')
+    const eventType = String(body?.eventType || '').trim()
+    const content = String(body?.content || '').trim()
+    if (!eventType || !content) throw new Error('VALIDATION_FAILED')
     const file = getDemoFile(state, body?.fileId)
     state.petEvents = state.petEvents || []
     const event = {
       id: Date.now(),
       pet_id: body?.petId,
       pet_name: pet.name,
-      event_type: body?.eventType || '日常',
-      content: body?.content || '',
-      mood: body?.mood || '',
+      event_type: eventType,
+      content,
+      mood: String(body?.mood || '').trim(),
       file_id: body?.fileId || null,
       object_key: body?.localUrl || file?.object_key || '',
       local_url: body?.localUrl || file?.object_key || '',
