@@ -410,10 +410,12 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
   if (path === '/modules/pet/profiles' && method === 'POST') {
     if (!state.petEnabled) throw new Error('MODULE_DISABLED')
     const body = options.data as any
+    const name = String(body?.name || '').trim()
+    if (!name) throw new Error('VALIDATION_FAILED')
     state.petProfiles = state.petProfiles || []
     const profile = {
       id: Date.now(),
-      name: body?.name || '小朋友',
+      name,
       breed: body?.breed || '',
       birthday: body?.birthday || null,
       avatar_file_id: body?.avatarFileId || null,
@@ -429,20 +431,22 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
     if (!state.petEnabled) throw new Error('MODULE_DISABLED')
     const id = Number(path.split('/')[4])
     const body = options.data as any
+    const name = String(body?.name || '').trim()
+    if (!name) throw new Error('VALIDATION_FAILED')
     let updated = false
     state.petProfiles = (state.petProfiles || []).map((item: any) => {
       if (item.id !== id) return item
       updated = true
       return {
         ...item,
-        name: body?.name || item.name,
+        name,
         breed: body?.breed ?? item.breed,
         birthday: body?.birthday ?? item.birthday,
         updated_at: new Date().toISOString()
       }
     })
     state.petEvents = (state.petEvents || []).map((item: any) => item.pet_id === id
-      ? { ...item, pet_name: body?.name || item.pet_name }
+      ? { ...item, pet_name: name }
       : item)
     if (!updated) throw new Error('PET_NOT_FOUND')
     saveDemoState(state)
