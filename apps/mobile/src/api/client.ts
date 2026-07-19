@@ -697,11 +697,13 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/anniversaries' && method === 'POST') {
     const body = options.data as any
+    const title = String(body?.title || '').trim()
+    if (!title || !body?.eventDate) throw new Error('VALIDATION_FAILED')
     state.anniversaries = state.anniversaries || []
     const anniversary = {
       id: Date.now(),
-      title: body?.title || '我们的纪念日',
-      event_date: body?.eventDate || new Date().toISOString().slice(0, 10),
+      title,
+      event_date: body.eventDate,
       event_type: body?.eventType || 'custom',
       remind_time: body?.remindTime || null,
       card_theme: body?.cardTheme || 'warm',
@@ -715,17 +717,23 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
   if (path.startsWith('/anniversaries/') && method === 'PUT') {
     const id = Number(path.split('/')[2])
     const body = options.data as any
-    state.anniversaries = (state.anniversaries || []).map((item: any) => item.id === id
-      ? {
-          ...item,
-          title: body?.title || item.title,
-          event_date: body?.eventDate || item.event_date,
-          event_type: body?.eventType || item.event_type || 'custom',
-          remind_time: body?.remindTime || null,
-          card_theme: body?.cardTheme || item.card_theme || 'warm',
-          updated_at: new Date().toISOString()
-        }
-      : item)
+    const title = String(body?.title || '').trim()
+    if (!title || !body?.eventDate) throw new Error('VALIDATION_FAILED')
+    let updated = false
+    state.anniversaries = (state.anniversaries || []).map((item: any) => {
+      if (item.id !== id) return item
+      updated = true
+      return {
+        ...item,
+        title,
+        event_date: body.eventDate,
+        event_type: body?.eventType || item.event_type || 'custom',
+        remind_time: body?.remindTime || null,
+        card_theme: body?.cardTheme || item.card_theme || 'warm',
+        updated_at: new Date().toISOString()
+      }
+    })
+    if (!updated) throw new Error('ANNIVERSARY_NOT_FOUND')
     saveDemoState(state)
     return handled({ id })
   }
