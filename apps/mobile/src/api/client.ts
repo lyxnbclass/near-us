@@ -1045,13 +1045,16 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
   if (path === '/statuses' && method === 'POST') {
     const body = options.data as any
     const file = getDemoFile(state, body?.fileId)
+    const content = String(body?.content || '').trim()
+    const moodTag = String(body?.moodTag || '').trim()
+    if (!content && !file) throw new Error('VALIDATION_FAILED')
     state.statuses = state.statuses || []
     state.notifications = state.notifications || []
     state.statuses.unshift({
       id: Date.now(),
-      content: body?.content || '我在这里，轻轻想你一下。',
+      content,
       nickname: state.user?.nickname || '我',
-      mood_tag: body?.moodTag || '在想你',
+      mood_tag: moodTag || '在想你',
       file_id: body?.fileId || null,
       object_key: body?.localUrl || file?.object_key || '',
       local_url: body?.localUrl || file?.object_key || '',
@@ -1063,7 +1066,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
       id: Date.now() + 1,
       type: 'status.created',
       title: '新的此刻',
-      body: body?.content || '',
+      body: content,
       read_at: null,
       created_at: new Date().toISOString()
     })
