@@ -749,10 +749,12 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/interactions/wishes' && method === 'POST') {
     const body = options.data as any
+    const title = String(body?.title || '').trim()
+    if (!title) throw new Error('VALIDATION_FAILED')
     state.wishes = state.wishes || []
     state.wishes.unshift({
       id: Date.now(),
-      title: body?.title || '一起做一件小事',
+      title,
       note: body?.note || '',
       completed: false,
       nickname: state.user?.nickname || '我',
@@ -787,13 +789,15 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
   if (path.startsWith('/interactions/wishes/') && method === 'PUT') {
     const id = Number(path.split('/')[3])
     const body = options.data as any
+    const title = String(body?.title || '').trim()
+    if (!title) throw new Error('VALIDATION_FAILED')
     let updated = false
     state.wishes = (state.wishes || []).map((item: any) => {
       if (item.id !== id) return item
       updated = true
       return {
         ...item,
-        title: body?.title || item.title,
+        title,
         note: body?.note ?? item.note,
         updated_at: new Date().toISOString()
       }
