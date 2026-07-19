@@ -835,6 +835,8 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/interactions/daily-topic/answer' && method === 'POST') {
     const body = options.data as any
+    const answer = String(body?.answer || '').trim()
+    if (!answer) throw new Error('VALIDATION_FAILED')
     state.dailyTopic = state.dailyTopic || {
       topic: { id: 1, question: '如果今晚能把一小时留给对方，你想怎么用？' },
       answers: []
@@ -842,7 +844,7 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
     const mine = {
       user_id: state.user?.id || 1,
       nickname: state.user?.nickname || '我',
-      answer: body?.answer || '',
+      answer,
       created_at: new Date().toISOString()
     }
     const partner = {
