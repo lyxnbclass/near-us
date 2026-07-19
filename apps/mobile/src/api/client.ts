@@ -512,13 +512,16 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path === '/files' && method === 'POST') {
     const body = options.data as any
-    if (!body?.objectKey) throw new Error('FILE_EMPTY')
+    const objectKey = String(body?.objectKey || '').trim()
+    const mimeType = String(body?.mimeType || '').trim()
+    if (!objectKey) throw new Error('FILE_EMPTY')
+    if (!mimeType) throw new Error('VALIDATION_FAILED')
     state.files = state.files || []
     const file = {
       id: Date.now(),
-      object_key: body?.objectKey || '',
+      object_key: objectKey,
       original_name: body?.originalName || 'memory.jpg',
-      mime_type: body?.mimeType || 'image/jpeg',
+      mime_type: mimeType,
       size_bytes: body?.sizeBytes || 0,
       created_at: new Date().toISOString()
     }
