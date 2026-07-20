@@ -743,7 +743,9 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
 
   if (path.startsWith('/anniversaries/') && method === 'DELETE') {
     const id = Number(path.split('/')[2])
+    const before = (state.anniversaries || []).length
     state.anniversaries = (state.anniversaries || []).filter((item: any) => item.id !== id)
+    if (state.anniversaries.length === before) throw new Error('ANNIVERSARY_NOT_FOUND')
     saveDemoState(state)
     return handled({ id, deleted: true })
   }
