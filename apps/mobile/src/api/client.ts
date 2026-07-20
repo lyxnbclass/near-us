@@ -1079,7 +1079,8 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
   if (path.startsWith('/statuses/') && path.endsWith('/reactions') && method === 'POST') {
     const id = Number(path.split('/')[2])
     const body = options.data as any
-    const reactionKey = body?.reactionKey || '抱抱'
+    const reactionKey = String(body?.reactionKey || '').trim()
+    if (!reactionKey) throw new Error('VALIDATION_FAILED')
     const exists = (state.statuses || []).some((item: any) => item.id === id)
     if (!exists) throw new Error('STATUS_NOT_FOUND')
     state.statuses = (state.statuses || []).map((item: any) => item.id === id
