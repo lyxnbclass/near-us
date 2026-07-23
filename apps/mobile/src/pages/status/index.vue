@@ -128,7 +128,7 @@ function clearPhoto() {
 
 function reactionList(item: any) {
   if (!item.reactions) return []
-  return String(item.reactions).split(',').filter(Boolean)
+  return String(item.reactions).split(',').map(reaction => reaction.trim()).filter(Boolean)
 }
 
 function hasReaction(item: any, reactionKey: string) {

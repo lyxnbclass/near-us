@@ -1187,7 +1187,7 @@ function queryNumber(path: string, key: string) {
 
 function reactionList(value: string) {
   if (!value) return []
-  return String(value).split(',').filter(Boolean)
+  return String(value).split(',').map(reaction => reaction.trim()).filter(Boolean)
 }
 
 function recentInviteFailures(state: any) {
