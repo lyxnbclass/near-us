@@ -1083,14 +1083,16 @@ function mockRequest(path: string, options: ApiRequestOptions): MockResult {
     if (!reactionKey) throw new Error('VALIDATION_FAILED')
     const exists = (state.statuses || []).some((item: any) => item.id === id)
     if (!exists) throw new Error('STATUS_NOT_FOUND')
-    state.statuses = (state.statuses || []).map((item: any) => item.id === id
-      ? {
-          ...item,
-          reactions: reactionList(item.reactions).includes(reactionKey)
-            ? item.reactions
-            : item.reactions ? `${item.reactions},${reactionKey}` : reactionKey
-        }
-      : item)
+    state.statuses = (state.statuses || []).map((item: any) => {
+      if (item.id !== id) return item
+      const reactions = reactionList(item.reactions)
+      return {
+        ...item,
+        reactions: reactions.includes(reactionKey)
+          ? reactions.join(',')
+          : [...reactions, reactionKey].join(',')
+      }
+    })
     state.notifications = state.notifications || []
     if (!(state.notifications || []).some((item: any) => item.type === 'status.reacted' && item.body === reactionKey && !item.read_at)) {
       state.notifications.unshift({
